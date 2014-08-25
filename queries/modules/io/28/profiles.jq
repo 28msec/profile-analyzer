@@ -27,7 +27,7 @@ while (m:filter($json-profile("iterator-tree"), function ($iterator as object, $
 while (m:filter($json-profile("iterator-tree"), function ($iterator as object, $parent as object) as object* 
                                                     { 
                                                         (:if ($iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator")):)
-                                                        if ($parent("prof-wall") div 20 < $iterator("prof-wall"))
+                                                        if ($parent("prof-wall") div 40 < $iterator("prof-wall"))
                                                         then $iterator
                                                         else members($iterator("iterators"))
                                                     })) {};
