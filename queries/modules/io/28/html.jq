@@ -16,20 +16,21 @@ declare function html:page($json-profile as object()) as element()
 declare function html:head() as element()
 {
   <head>
-    <link rel="stylesheet" type="text/css" href="{$html:BUCKET}/libs/treetable/css/jquery.treetable.css"/>
-    <link rel="stylesheet" type="text/css" href="{$html:BUCKET}/libs/tablesorter/themes/blue/style.css"/>
     <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"/>
     <script src="{$html:BUCKET}/libs/treetable/jquery.treetable.js"/>
     <script src="{$html:BUCKET}/libs/tablesorter/jquery.tablesorter.js"/>
-    <link rel="stylesheet" type="text/css" href="{$html:BUCKET}/styles/treetable.theme.css"/>
-    <style type="text/css">
+    <link rel="stylesheet" type="text/css" href="{$html:BUCKET}/styles/style.css"/>
     <!--
+    <link rel="stylesheet" type="text/css" href="{$html:BUCKET}/libs/treetable/css/jquery.treetable.css"/>
+    <link rel="stylesheet" type="text/css" href="{$html:BUCKET}/libs/tablesorter/themes/blue/style.css"/>
+    <link rel="stylesheet" type="text/css" href="{$html:BUCKET}/libs/treetable/css/jquery.treetable.theme.default.css"/>
+    <style type="text/css">
       th { white-space: nowrap; padding-right: 20px !important}
       td.query {background-color: #85E085 !important}
       td.library {background-color: #FFB870 !important}
       td.zorba {background-color: #FFB8B8 !important}
-    -->
 </style>
+-->
   </head>
 };
 
@@ -37,11 +38,73 @@ declare function html:body($json-profile as object()) as element()
 {
     <body>
     {
+        html:profile-tree($json-profile),
         html:function-statistics($json-profile),
         html:function-calls-statistics($json-profile),
         html:mongo-statistics($json-profile)
     }   
     </body>   
+};
+
+declare function html:profile-tree($json-profile as object()) as element()*
+{
+    <h3>Query Profile</h3>,
+    <table id="profile-tree">
+        <caption>
+            <a href="#" onclick="jQuery('#profile-tree').treetable('expandAll'); return false;">Expand all</a>
+            <a href="#" onclick="jQuery('#profile-tree').treetable('collapseAll'); return false;">Collapse all</a>
+        </caption>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>X</th>
+            <th>Y</th>
+          </tr>
+        </thead>
+        <tbody>
+        {
+            html:visit-with-ancestor-ids($json-profile, 
+                function ($iterator as object, $ancestors as xs:string*) as element()? 
+                { 
+                    <tr>
+                    {
+                        attribute data-tt-id {string-join($ancestors,"-")},
+                        if (count($ancestors) gt 1)
+                        then attribute data-tt-parent-id {string-join($ancestors[position() < last()], "-")}
+                        else ()
+                    }
+                    <td>
+                        <span class="{
+                            if ($iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator"))
+                            then "function"
+                            else "iterator"}">
+                        {$iterator("prof-name")}
+                        </span>
+                    </td>
+                    <td></td>
+                    <td></td>
+                    <!--
+                        
+                        <td>{$iterator("prof-cpu")}</td>
+                        <td>{$iterator("prof-wall")}</td>
+                        <td>{$iterator("prof-calls")}</td>
+                        <td>{$iterator("prof-next-calls")}</td>
+                        <td>{if ($iterator("cached")) then ($iterator("prof-cache-hits"), "??")[1] else "N/A"}</td>
+                        <td>{if ($iterator("cached")) then ($iterator("prof-cache-misses"), "??")[1] else "N/A"}</td>
+                        {html:stack-trace($ancestors, html:location($iterator("location")))} -->
+                    </tr>
+                })
+        }
+        </tbody>
+    </table>,
+    <script lang="text/javascript">
+        $("#profile-tree").treetable({{ expandable: true }});
+        $("#profile-tree tbody").on("mousedown", "tr", function() 
+            {{
+                $(".selected").not(this).removeClass("selected");
+                $(this).toggleClass("selected");
+            }});
+    </script>
 };
 
 declare function html:function-statistics($json-profile as object()) as element()*
@@ -98,24 +161,28 @@ declare function html:function-calls-statistics($json-profile as object()) as el
                 <th>Nexts</th>
                 <th>C. Hits</th>
                 <th>C. Misses</th>
-                <th>Location</th>
+                <th>Stack Trace</th>
             </tr> 
         </thead>
         <tbody>
         {
-            for $function in descendant-objects($json-profile)
-            where $function("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator")
-            return
-                <tr>
-                    <td>{$function("prof-name")}</td>
-                    <td>{$function("prof-cpu")}</td>
-                    <td>{$function("prof-wall")}</td>
-                    <td>{$function("prof-calls")}</td>
-                    <td>{$function("prof-next-calls")}</td>
-                    <td>{if ($function("cached")) then ($function("prof-cache-hits"), "??")[1] else "N/A"}</td>
-                    <td>{if ($function("cached")) then ($function("prof-cache-misses"), "??")[1] else "N/A"}</td>
-                    {html:location($function("location"))}
-                </tr>
+            html:visit-with-ancestors($json-profile, 
+                function ($iterator as object, $ancestors as object()*) as element()? 
+                { 
+                    if ($iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator"))
+                    then
+                        <tr>
+                            <td>{$iterator("prof-name")}</td>
+                            <td>{$iterator("prof-cpu")}</td>
+                            <td>{$iterator("prof-wall")}</td>
+                            <td>{$iterator("prof-calls")}</td>
+                            <td>{$iterator("prof-next-calls")}</td>
+                            <td>{if ($iterator("cached")) then ($iterator("prof-cache-hits"), "??")[1] else "N/A"}</td>
+                            <td>{if ($iterator("cached")) then ($iterator("prof-cache-misses"), "??")[1] else "N/A"}</td>
+                            {html:stack-trace($ancestors, html:location($iterator("location")))}
+                        </tr>
+                    else ()
+                })
         }
         </tbody>
     </table>,
@@ -138,7 +205,7 @@ declare function html:mongo-statistics($json-profile as object()) as element()*
                 <th>Wall (ms)</th>
                 <th>Calls</th>
                 <th>Nexts</th>
-                <th>Stack</th>
+                <th>Stack Trace</th>
                 <th>Operation</th>
             </tr> 
         </thead>
@@ -174,7 +241,7 @@ declare function html:mongo-statistics($json-profile as object()) as element()*
                             <td>{$iterator("prof-wall")}</td>
                             <td>{$iterator("prof-calls")}</td>
                             <td>{$iterator("prof-next-calls")}</td>
-                            {html:stack-trace($ancestors, false())}
+                            {html:stack-trace($ancestors, ())}
                             <td>
                             {
                                 if (members($iterator("prof-queries")))
@@ -248,6 +315,32 @@ declare function html:visit-with-ancestors($iterator as object(), $ancestors as 
     return members($iterator("iterators")) ! html:visit-with-ancestors($$, $ancestors, $visitor)
 };
 
+declare function html:visit-with-ancestor-ids($json-profile as object(), $visitor as function(*)) as item()*
+{
+    html:visit-with-ancestor-ids($json-profile("iterator-tree"), "1", $visitor)
+};
+
+declare function html:visit-with-ancestor-ids($iterator as object(), $ancestors as xs:string*, $visitor as function(*)) as item()*
+{
+    $visitor($iterator, $ancestors),
+    for $child at $i in members($iterator("iterators"))
+    let $ancestors := ($ancestors, string($i))
+    return html:visit-with-ancestor-ids($child, $ancestors, $visitor)
+};
+
+
+declare function html:location-text($raw-location as xs:string) as element()
+{
+    if (matches($raw-location, "file:///opt/sausalito/\\d.\\d.\\d/opt/Sausalito-App-Server-Mongo-\\d.\\d.\\d/share/zorba/uris.*/modules.*\\.module:.*"))
+    then 
+        replace($raw-location, "file:///opt/sausalito/\\d.\\d.\\d/opt/Sausalito-App-Server-Mongo-\\d.\\d.\\d/share/zorba/uris.*/modules(.*)\\.module(:.*)", "<Z>$1$2")
+    else if (matches($raw-location, "/lib.*\\.module:.*")) 
+         then replace($raw-location, "/lib(.*)\\.module(:.*)", "<L>$1$2")
+         else if (matches($raw-location, "/(public|private).*\\.(xq|jq)(:.*)")) 
+              then replace($raw-location, "/(public|private)(.*\\.)(xq|jq)(:.*)", "<Q>/$1$2$3$4")
+              else "<?>" || $raw-location
+};
+
 declare function html:location($raw-location as xs:string) as element()
 {
     if (matches($raw-location, "file:///opt/sausalito/\\d.\\d.\\d/opt/Sausalito-App-Server-Mongo-\\d.\\d.\\d/share/zorba/uris.*/modules.*\\.module:.*"))
@@ -260,14 +353,15 @@ declare function html:location($raw-location as xs:string) as element()
               else <td nowrap="true">{"<?>" || $raw-location}</td>
 };
 
-declare function html:stack-trace($ancestors as object()*, $only-user-code as xs:boolean) as element()
+declare function html:stack-trace($ancestors as object()*, $location as xs:string?) as element()
 {
     <td nowrap="true">
     {
+        if ($location) then ($location, <br/>) else (),
         for $ancestor in reverse($ancestors)
-        let $location := html:location($ancestor("location"))
         where $ancestor("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator")
-        return ($ancestor("prof-name")|| "()", <br/>)
+        return ($ancestor("prof-name")|| "()", <br/>),
+        "<main-query>"
     }
     </td>
 };
