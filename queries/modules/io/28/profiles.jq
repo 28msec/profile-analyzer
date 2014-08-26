@@ -27,10 +27,16 @@ while (m:filter($json-profile("iterator-tree"), function ($iterator as object, $
 while (m:filter($json-profile("iterator-tree"), function ($iterator as object, $parent as object) as object* 
                                                     { 
                                                         (:if ($iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator")):)
-                                                        if ($parent("prof-wall") div 40 < $iterator("prof-wall"))
+                                                        if ($parent("prof-wall") div 15 < $iterator("prof-wall")
+                                                            or
+                                                            $parent("prof-cpu") div 15 < $iterator("prof-cpu")
+                                                            or
+                                                            $iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator"))
                                                         then $iterator
                                                         else members($iterator("iterators"))
                                                     })) {};
+                                                    
+  replace value of json $json-profile("iterator-tree")("prof-name") with "MainQuery";
 };
 
 

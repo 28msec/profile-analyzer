@@ -20,17 +20,6 @@ declare function html:head() as element()
     <script src="{$html:BUCKET}/libs/treetable/jquery.treetable.js"/>
     <script src="{$html:BUCKET}/libs/tablesorter/jquery.tablesorter.js"/>
     <link rel="stylesheet" type="text/css" href="{$html:BUCKET}/styles/style.css"/>
-    <!--
-    <link rel="stylesheet" type="text/css" href="{$html:BUCKET}/libs/treetable/css/jquery.treetable.css"/>
-    <link rel="stylesheet" type="text/css" href="{$html:BUCKET}/libs/tablesorter/themes/blue/style.css"/>
-    <link rel="stylesheet" type="text/css" href="{$html:BUCKET}/libs/treetable/css/jquery.treetable.theme.default.css"/>
-    <style type="text/css">
-      th { white-space: nowrap; padding-right: 20px !important}
-      td.query {background-color: #85E085 !important}
-      td.library {background-color: #FFB870 !important}
-      td.zorba {background-color: #FFB8B8 !important}
-</style>
--->
   </head>
 };
 
@@ -38,7 +27,8 @@ declare function html:body($json-profile as object()) as element()
 {
     <body>
     {
-        html:profile-tree($json-profile),
+        html:profile-tree($json-profile, true()),
+        html:profile-tree($json-profile, false()),
         html:function-statistics($json-profile),
         html:function-calls-statistics($json-profile),
         html:mongo-statistics($json-profile)
@@ -46,65 +36,68 @@ declare function html:body($json-profile as object()) as element()
     </body>   
 };
 
-declare function html:profile-tree($json-profile as object()) as element()*
+declare function html:profile-tree($json-profile as object(), $only-functions as xs:boolean) as element()*
 {
-    <h3>Query Profile</h3>,
-    <table id="profile-tree">
-        <caption>
-            <a href="#" onclick="jQuery('#profile-tree').treetable('expandAll'); return false;">Expand all</a>
-            <a href="#" onclick="jQuery('#profile-tree').treetable('collapseAll'); return false;">Collapse all</a>
-        </caption>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>X</th>
-            <th>Y</th>
-          </tr>
-        </thead>
-        <tbody>
-        {
-            html:visit-with-ancestor-ids($json-profile, 
-                function ($iterator as object, $ancestors as xs:string*) as element()? 
-                { 
-                    <tr>
-                    {
-                        attribute data-tt-id {string-join($ancestors,"-")},
-                        if (count($ancestors) gt 1)
-                        then attribute data-tt-parent-id {string-join($ancestors[position() < last()], "-")}
-                        else ()
-                    }
-                    <td>
-                        <span class="{
-                            if ($iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator"))
-                            then "function"
-                            else "iterator"}">
-                        {$iterator("prof-name")}
-                        </span>
-                    </td>
-                    <td></td>
-                    <td></td>
-                    <!--
-                        
-                        <td>{$iterator("prof-cpu")}</td>
-                        <td>{$iterator("prof-wall")}</td>
-                        <td>{$iterator("prof-calls")}</td>
-                        <td>{$iterator("prof-next-calls")}</td>
-                        <td>{if ($iterator("cached")) then ($iterator("prof-cache-hits"), "??")[1] else "N/A"}</td>
-                        <td>{if ($iterator("cached")) then ($iterator("prof-cache-misses"), "??")[1] else "N/A"}</td>
-                        {html:stack-trace($ancestors, html:location($iterator("location")))} -->
-                    </tr>
-                })
-        }
-        </tbody>
-    </table>,
-    <script lang="text/javascript">
-        $("#profile-tree").treetable({{ expandable: true }});
-        $("#profile-tree tbody").on("mousedown", "tr", function() 
+    let $id := "profile-tree" || (if ($only-functions) then "-functions" else ())
+    return
+    (
+        <h3>Query Profile{ if ($only-functions) then " (Only Functions)" else () }</h3>,
+        <table cellspacing="1" id="{$id}" class="treetable">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>CPU (ms)</th>
+                    <th>Wall (ms)</th>
+                    <th>Calls</th>
+                    <th>Nexts</th>
+                    <th>C. Hits</th>
+                    <th>C. Misses</th>
+                    <th>Location</th>
+                </tr>
+            </thead>
+            <tbody>
+            {
+                html:visit-with-ancestor-ids($json-profile, $only-functions,
+                    function ($iterator as object, $ancestors as xs:string*) as element()? 
+                    { 
+                        <tr>
+                        {
+                            attribute data-tt-id {string-join($ancestors,"-")},
+                            if (count($ancestors) gt 1)
+                            then attribute data-tt-parent-id {string-join($ancestors[position() < last()], "-")}
+                            else ()
+                        }
+                            <td>
+                                <span class="{
+                                    if ($iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator"))
+                                    then "function"
+                                    else "iterator"}">
+                                        {$iterator("prof-name")}
+                                </span>
+                            </td>
+                            <td>{$iterator("prof-cpu")}</td>
+                            <td>{$iterator("prof-wall")}</td>
+                            <td>{$iterator("prof-calls")}</td>
+                            <td>{$iterator("prof-next-calls")}</td>
+                            <td>{if ($iterator("cached")) then ($iterator("prof-cache-hits"), "??")[1] else "N/A"}</td>
+                            <td>{if ($iterator("cached")) then ($iterator("prof-cache-misses"), "??")[1] else "N/A"}</td>
+                            <td>{html:location-text($iterator("location"))}</td>
+                        </tr>
+                    })
+            }
+            </tbody>
+        </table>,
+        <a href="#" onclick="jQuery('#{$id}').treetable('expandAll'); return false;">Expand all</a>,
+        <a href="#" onclick="jQuery('#{$id}').treetable('collapseAll'); return false;">Collapse all</a>,
+        <script lang="text/javascript">
+            $("#{$id}").treetable({{ expandable: true }});
+            $("#{$id} tbody").on("mousedown", "tr", function() 
             {{
                 $(".selected").not(this).removeClass("selected");
                 $(this).toggleClass("selected");
             }});
-    </script>
+        </script>
+    )
 };
 
 declare function html:function-statistics($json-profile as object()) as element()*
@@ -145,6 +138,11 @@ declare function html:function-statistics($json-profile as object()) as element(
         {{ 
             $("#functions").tablesorter({{ sortList: [[2,1]] }}); 
         }}); 
+        $("#functions tbody").on("mousedown", "tr", function() 
+        {{
+            $(".selected").not(this).removeClass("selected");
+            $(this).toggleClass("selected");
+        }});
     </script>
 };
 
@@ -166,7 +164,7 @@ declare function html:function-calls-statistics($json-profile as object()) as el
         </thead>
         <tbody>
         {
-            html:visit-with-ancestors($json-profile, 
+            html:visit-with-ancestors($json-profile,
                 function ($iterator as object, $ancestors as object()*) as element()? 
                 { 
                     if ($iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator"))
@@ -179,7 +177,7 @@ declare function html:function-calls-statistics($json-profile as object()) as el
                             <td>{$iterator("prof-next-calls")}</td>
                             <td>{if ($iterator("cached")) then ($iterator("prof-cache-hits"), "??")[1] else "N/A"}</td>
                             <td>{if ($iterator("cached")) then ($iterator("prof-cache-misses"), "??")[1] else "N/A"}</td>
-                            {html:stack-trace($ancestors, html:location($iterator("location")))}
+                            {html:stack-trace($ancestors, html:location-text($iterator("location")))}
                         </tr>
                     else ()
                 })
@@ -190,7 +188,12 @@ declare function html:function-calls-statistics($json-profile as object()) as el
         $(document).ready(function() 
         {{ 
             $("#function-calls").tablesorter({{ sortList: [[2,1]] }}); 
-        }}); 
+        }});
+        $("#functions-calls tbody").on("mousedown", "tr", function() 
+        {{
+            $(".selected").not(this).removeClass("selected");
+            $(this).toggleClass("selected");
+        }});
     </script>
 };
 
@@ -277,7 +280,12 @@ declare function html:mongo-statistics($json-profile as object()) as element()*
         $(document).ready(function() 
         {{ 
             $("#mongodb").tablesorter({{ sortList: [[2,1]] }}); 
-        }}); 
+        }});
+        $("#mongodb tbody").on("mousedown", "tr", function() 
+        {{
+            $(".selected").not(this).removeClass("selected");
+            $(this).toggleClass("selected");
+        }});
     </script>
 };
 
@@ -305,31 +313,55 @@ while (m:filter($json-profile("iterator-tree"), function ($iterator as object, $
 
 declare function html:visit-with-ancestors($json-profile as object(), $visitor as function(*)) as item()*
 {
-    html:visit-with-ancestors($json-profile("iterator-tree"), (), $visitor)
+    html:do-visit-with-ancestors($json-profile("iterator-tree"), (), $visitor)
 };
 
-declare function html:visit-with-ancestors($iterator as object(), $ancestors as object()*, $visitor as function(*)) as item()*
+
+declare function html:do-visit-with-ancestors($iterator as object(), $ancestors as object()*, $visitor as function(*)) as item()*
 {
     $visitor($iterator, $ancestors),
     let $ancestors := ($ancestors, $iterator)
-    return members($iterator("iterators")) ! html:visit-with-ancestors($$, $ancestors, $visitor)
+    return members($iterator("iterators")) ! html:do-visit-with-ancestors($$, $ancestors, $visitor)
 };
 
-declare function html:visit-with-ancestor-ids($json-profile as object(), $visitor as function(*)) as item()*
+declare function html:visit-with-ancestor-ids($json-profile as object(), $only-functions as xs:boolean, $visitor as function(*)) as item()*
 {
-    html:visit-with-ancestor-ids($json-profile("iterator-tree"), "1", $visitor)
+    if ($only-functions)
+    then html:do-visit-functions-with-ancestor-ids($json-profile("iterator-tree"), "1", $visitor)
+    else html:do-visit-with-ancestor-ids($json-profile("iterator-tree"), "1", $visitor)
 };
 
-declare function html:visit-with-ancestor-ids($iterator as object(), $ancestors as xs:string*, $visitor as function(*)) as item()*
+declare function html:do-visit-with-ancestor-ids($iterator as object(), $ancestors as xs:string*, $visitor as function(*)) as item()*
 {
     $visitor($iterator, $ancestors),
     for $child at $i in members($iterator("iterators"))
     let $ancestors := ($ancestors, string($i))
-    return html:visit-with-ancestor-ids($child, $ancestors, $visitor)
+    return html:do-visit-with-ancestor-ids($child, $ancestors, $visitor)
 };
 
 
-declare function html:location-text($raw-location as xs:string) as element()
+declare function html:do-visit-functions-with-ancestor-ids($iterator as object(), $ancestors as xs:string*, $visitor as function(*)) as item()*
+{
+    $visitor($iterator, $ancestors),
+    
+    for $child at $i in html:top-function-child(members($iterator("iterators")))
+    let $ancestors := ($ancestors, string($i))
+    return html:do-visit-functions-with-ancestor-ids($child, $ancestors, $visitor)
+};
+
+declare function html:top-function-child($iterators as object()*) as object()*
+{
+    for $iterator in $iterators
+    return
+    {
+        if ($iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator"))
+        then $iterator
+        else html:top-function-child(members($iterator("iterators")))
+    }
+};
+
+
+declare function html:location-text($raw-location as xs:string) as xs:string
 {
     if (matches($raw-location, "file:///opt/sausalito/\\d.\\d.\\d/opt/Sausalito-App-Server-Mongo-\\d.\\d.\\d/share/zorba/uris.*/modules.*\\.module:.*"))
     then 
