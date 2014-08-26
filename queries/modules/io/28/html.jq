@@ -189,7 +189,7 @@ declare function html:function-calls-statistics($json-profile as object()) as el
         {{ 
             $("#function-calls").tablesorter({{ sortList: [[2,1]] }}); 
         }});
-        $("#functions-calls tbody").on("mousedown", "tr", function() 
+        $("#function-calls tbody").on("mousedown", "tr", function() 
         {{
             $(".selected").not(this).removeClass("selected");
             $(this).toggleClass("selected");

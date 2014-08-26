@@ -19,10 +19,11 @@ table.tablesorter thead tr .header {
 	background-position: center right;
 	cursor: pointer;
 }
+
 table.tablesorter tbody td {
-	color: #3D3D3D;
+	/*color: #3D3D3D;*/
 	padding: 4px;
-	background-color: #FFF;
+	/*background-color: #FFF;*/
 	vertical-align: top;
 }
 table.tablesorter tbody tr.odd td {
@@ -38,6 +39,18 @@ table.tablesorter thead tr .headerSortDown, table.tablesorter thead tr .headerSo
 background-color: #8dbdd8;
 }
 
+table.tablesorter tbody tr {
+  background-color: #fff !important;
+}
+
+table.tablesorter tbody tr.selected {
+  background-color: #3875d7 !important; 
+  color: #fff !important;
+}
+
+table.tablesorter tbody tr.selected table  tr {
+  background-color: #3875d7 !important;
+}
 /* tree tables */
 table.treetable span.indenter { 
   display: inline-block;
@@ -95,7 +108,7 @@ background-color: #FFF;
 }
 
 table.treetable tbody td {
-	color: #3D3D3D;	
+	/*color: #3D3D3D;*/
 	vertical-align: top;
 	cursor: default;
     padding: .3em 1em;
