@@ -3,110 +3,78 @@ module namespace m = "http://28.io/profiles";
 
 declare %an:sequential function m:clean-profile($json-profile as object) as ()
 {
-m:filter($json-profile("iterator-tree"), function ($iterator as object, $parent as object) as object? 
-                                             { 
-                                                if (empty($iterator("prof-wall")) or $iterator("prof-wall") gt 1)
-                                                then $iterator
-                                                else ()
-                                             });
-                                             
-while (m:filter($json-profile("iterator-tree"), function ($iterator as object, $parent as object) as object? 
-                                                    { 
-                                                        if (not(empty($iterator("prof-wall")) and empty($iterator("iterators"))))
-                                                        then $iterator
-                                                        else ()
-                                                    })) {};
-
-while (m:filter($json-profile("iterator-tree"), function ($iterator as object, $parent as object) as object*
-                                                    { 
-                                                        if (empty($iterator("prof-wall")))
-                                                        then members($iterator("iterators"))
-                                                        else $iterator
-                                                    })) {};
-                                                  
-while (m:filter($json-profile("iterator-tree"), function ($iterator as object, $parent as object) as object* 
-                                                    { 
-                                                        (:if ($iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator")):)
-                                                        if ($parent("prof-wall") div 15 < $iterator("prof-wall")
-                                                            or
-                                                            $parent("prof-cpu") div 15 < $iterator("prof-cpu")
-                                                            or
-                                                            $iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator"))
-                                                        then $iterator
-                                                        else members($iterator("iterators"))
-                                                    })) {};
-                                                    
-  replace value of json $json-profile("iterator-tree")("prof-name") with "MainQuery";
+    m:filter-in-place($json-profile("iterator-tree"));
+    replace value of json $json-profile("iterator-tree")("prof-name") with "<main-query>";
 };
 
-
-
-declare %an:sequential function m:render-profile($json-profile as object) as string
-{
-    m:render-profile($json-profile("iterator-tree"), "")
-};
-
-declare %an:sequential function m:render-profile($iterator as object, $indentation as string) as string
-{
-    variable $output := $indentation || $iterator("prof-name") || ": " || $iterator("prof-wall") || " ms, " || $iterator("prof-calls") || " calls\n";
-    
-    if ($iterator("iterators"))
-    then
+(:
+  the choice to drop an iterator is made on its ancestors
+  if the function is called on an iterator, it will be present in the final plan
+:)
+declare %an:sequential function m:filter-in-place($iterator as object) as ()
+{ 
+    if (empty(members($iterator("iterators"))))
+    then ()
+    else
     {
-        for $sub-iterator in members($iterator("iterators"))    
-        order by $sub-iterator("prof-wall") descending
-        return $output := $output || m:render-profile($sub-iterator, $indentation || "-");
+        variable $i as xs:integer := jn:size($iterator("iterators"));
+        while ($i > 0)
+        {
+            variable $child-iterator := $iterator("iterators")()[$i];
+            if 
+            (
+                (
+                    (exists($child-iterator("prof-wall")) and $child-iterator("prof-wall") le 5)
+                    or
+                    (not(exists($child-iterator("prof-wall"))) and count(members($child-iterator("iterators"))) eq 0)
+                    or
+                    (
+                        exists($iterator("prof-wall")) and 
+                        exists($child-iterator("prof-wall")) and
+                        $iterator("prof-wall") div 15 > $child-iterator("prof-wall") and 
+                        $iterator("prof-cpu") div 15 > $child-iterator("prof-cpu") and
+                        $child-iterator("prof-wall") le 5
+                    )
+                )
+                and not($child-iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator", "EvalQueryIterator"))
+            )
+            then
+            {
+                delete json $iterator("iterators")($i);
+                $i := $i - 1;
+            }
+            else 
+            {
+                (:
+                Replace iterators that
+                    1) are (e.g.:TryCatchIterator, TreatIterator,  FunctionTraceIterator)
+                    2) have no wall time
+                :)
+                if 
+                (
+                    ($child-iterator("kind") = ("TryCatchIterator", "TreatIterator", "FunctionTraceIterator"))
+                    or
+                    (not(exists($child-iterator("prof-wall"))))
+                )
+                then 
+                {
+                    variable $new-iterators :=  count(members($child-iterator("iterators")));
+                    
+                    for $inherited-iterator at $j in members($child-iterator("iterators"))
+                    return insert json $inherited-iterator into $iterator("iterators") at position $i + $j;
+                    
+                    delete json $iterator("iterators")($i);
+                    
+                    $i := $i + $new-iterators - 1;
+                }
+                else
+                {
+                    $i := $i - 1;
+                }
+            }
+        }
+        
+        for $child-iterator in members($iterator("iterators"))
+        return m:filter-in-place($child-iterator);
     }
-    else ();
-    
-    $output
 };
-
-declare function m:render-json-profile($json-profile as object) as object
-{
-    m:do-render-json-profile($json-profile("iterator-tree"))
-};
-
-declare function m:do-render-json-profile($iterator as object) as object
-{
-    {
-        $iterator("prof-name") || ": " || $iterator("prof-wall") || " ms, " || $iterator("prof-calls") || " calls":
-        [
-            for $sub-iterator in members($iterator("iterators"))
-            order by $sub-iterator("prof-wall") descending
-            return m:do-render-json-profile($sub-iterator)
-        ]
-    }
-};
-
-declare %private %an:sequential function m:filter($iterator as object, $filter as function(*)) as boolean
-{
-  variable $keep := 
-  [
-    for $member in members($iterator("iterators"))
-    return $filter($member, $iterator)
-  ];
-  
-  variable $changed := false;
-  
-  if (deep-equal(members($keep), members($iterator("iterators"))))
-  then ();
-  else 
-  {
-      $changed := true;
-      if (count(members($keep)) eq 0)
-      then delete json $iterator("iterators");
-      else replace value of json $iterator("iterators") with $keep;
-  }
-  
-  for $member in members($iterator("iterators"))
-  return 
-  {
-      if (m:filter($member, $filter))
-      then $changed := true;
-      else ();
-  }
-  
-  $changed
-};
-

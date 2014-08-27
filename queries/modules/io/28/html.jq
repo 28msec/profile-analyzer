@@ -1,16 +1,49 @@
 jsoniq version "1.0";
 module namespace html = "http://28.io/html";
+import module namespace resp = "http://www.28msec.com/modules/http-response";
 
 declare variable $html:BUCKET := "http://profile-analyzer.s3-website-us-east-1.amazonaws.com";
 
-declare function html:page($json-profile as object()) as element()
+declare %an:sequential function html:page($json-profile as object(), $query as xs:string) as element()
 {
+    resp:content-type("text/html");
     <html>
     {
         html:head(),
-        html:body($json-profile)
+        html:body($json-profile, $query)
     }
     </html>
+};
+
+declare %an:sequential function html:form-page() as element()
+{
+    resp:content-type("text/html");
+    <html>
+    {
+        html:head(),
+        <body>
+        {
+            html:form()
+        }
+        </body>
+    }
+    </html>
+};
+
+declare function html:form() as element()
+{
+    html:form("http://secxbrl-federico.xbrl.io/v1/_queries/public/api/facttable-for-report.jq/metadata/profile?report=FundamentalAccountingConcepts&ticker=intc",
+              "UElST0M3UjNSbXAvVkdVdkdMbnJqY2RXRHRFPToyMDUwLTAxLTAxVDAwOjAwOjAw")
+};
+
+declare function html:form($query as xs:string, $token as xs:string) as element()
+{
+    <form action="/v1/_queries/public/index.jq" method="POST">
+        Query: <input type="text" name="query" value="{$query}" size="180"/><br/>
+        Token: <input type="text" name="project-token" value="{$token}" size="180"/><br/>
+        Force reprofiling (and remove any cached profile for this query): <input type="checkbox" name="force-profile" value="true"/><br/>
+        <input type="submit" value="Submit"/>
+    </form>
 };
 
 declare function html:head() as element()
@@ -23,15 +56,21 @@ declare function html:head() as element()
   </head>
 };
 
-declare function html:body($json-profile as object()) as element()
+declare function html:body($json-profile as object(), $query as xs:string) as element()
 {
     <body>
     {
+        <h1>Profiling results</h1>,
+        <b>Query: </b>, {$query}, <br/>,
+        if (exists($json-profile("date")))
+        then <b>Using cached profile from {$json-profile("date")}</b>
+        else (),
         html:profile-tree($json-profile, true()),
         html:profile-tree($json-profile, false()),
         html:function-statistics($json-profile),
         html:function-calls-statistics($json-profile),
-        html:mongo-statistics($json-profile)
+        html:mongo-statistics($json-profile),
+        html:eval-statistics($json-profile)
     }   
     </body>   
 };
@@ -209,29 +248,11 @@ declare function html:mongo-statistics($json-profile as object()) as element()*
                 <th>Calls</th>
                 <th>Nexts</th>
                 <th>Stack Trace</th>
-                <th>Operation</th>
+                <th>Operations</th>
             </tr> 
         </thead>
         <tbody>
         {
-            (:
-            for $function in descendant-objects($json-profile)
-            where ($function("kind") eq "ExtFunctionCallIterator")
-                  and
-                  starts-with($function("prof-name"), "{http://www.28msec.com/modules/mongodb}")
-            return
-                <tr>
-                    <td>{ substring-after($function("prof-name"), "{http://www.28msec.com/modules/mongodb}") }</td>
-                    <td>{$function("prof-cpu")}</td>
-                    <td>{$function("prof-wall")}</td>
-                    <td>{$function("prof-calls")}</td>
-                    <td>{$function("prof-next-calls")}</td>
-                    {html:location($function("location"))}
-                    <td>{html:serialize-incell(members($function("prof-queries")), "prof-collection")}</td>
-                    <td>{html:serialize-incell(members($function("prof-queries")), "prof-query")}</td>
-                    <td>{html:serialize-incell(members($function("prof-queries")), "prof-plan")}</td>
-                </tr>
-            :)
             html:visit-with-ancestors($json-profile, 
                 function ($iterator as object, $ancestors as object()*) as element()? 
                 { 
@@ -289,6 +310,88 @@ declare function html:mongo-statistics($json-profile as object()) as element()*
     </script>
 };
 
+declare function html:eval-statistics($json-profile as object()) as element()*
+{
+    <h3>Eval operations</h3>,
+    <table cellspacing="1" id="eval" class="tablesorter">             
+        <thead>
+            <tr> 
+                <th>Name</th> 
+                <th>CPU (ms)</th>
+                <th>Wall (ms)</th>
+                <th>C. CPU (ms)</th>
+                <th>C. Wall (ms)</th>
+                <th>Calls</th>
+                <th>Nexts</th>
+                <th>Stack Trace</th>
+                <th>Operations</th>
+            </tr> 
+        </thead>
+        <tbody>
+        {
+            html:visit-with-ancestors($json-profile, 
+                function ($iterator as object, $ancestors as object()*) as element()? 
+                { 
+                    if ($iterator("kind") eq "EvalIterator")
+                    then
+                        <tr>
+                            <td nowrap="true">{$iterator("prof-name")}</td>
+                            <td>{$iterator("prof-cpu")}</td>
+                            <td>{$iterator("prof-wall")}</td>
+                            <td>{$iterator("prof-compilation-cpu")}</td>
+                            <td>{$iterator("prof-compilation-wall")}</td>
+                            <td>{$iterator("prof-calls")}</td>
+                            <td>{$iterator("prof-next-calls")}</td>
+                            {html:stack-trace($ancestors, ())}
+                            <td>
+                            {
+                                if (members($iterator("iterators"))[$$.kind eq "EvalQueryIterator"])
+                                then
+                                    <table>
+                                        <tr>
+                                            <th>Query</th>
+                                            <th>CPU (ms)</th>
+                                            <th>Wall (ms)</th>
+                                            <th>C. CPU (ms)</th>
+                                            <th>C. Wall (ms)</th>
+                                        </tr>
+                                        {
+                                            for $query in members($iterator("iterators"))[$$.kind eq "EvalQueryIterator"]
+                                            return
+                                            {
+                                                <tr>
+                                                    <td>{serialize($query("prof-body"))}</td>
+                                                    <td>{$query("prof-cpu")}</td>
+                                                    <td>{$query("prof-wall")}</td>
+                                                    <td>{$query("prof-compilation-cpu")}</td>
+                                                    <td>{$query("prof-compilation-wall")}</td>
+                                                </tr>
+                                            }
+                                        }
+                                    </table>
+                                else ()
+                            }
+                            </td>
+                        </tr>
+                    else ()
+                })
+        }
+        </tbody>
+    </table>,
+    <script lang="text/javascript">
+        $(document).ready(function() 
+        {{ 
+            $("#mongodb").tablesorter({{ sortList: [[2,1]] }}); 
+        }});
+        $("#mongodb tbody").on("mousedown", "tr", function() 
+        {{
+            $(".selected").not(this).removeClass("selected");
+            $(this).toggleClass("selected");
+        }});
+    </script>
+};
+
+
 declare function html:serialize-incell($objects as object()*, $field-name as string) as item()*
 {
   let $count := count($objects($field-name))
@@ -301,15 +404,6 @@ declare function html:serialize-incell($objects as object()*, $field-name as str
         else ()
       )
 };
-
-(:
-while (m:filter($json-profile("iterator-tree"), function ($iterator as object, $parent as object) as object*
-                                                    { 
-                                                        if (empty($iterator("prof-wall")))
-                                                        then members($iterator("iterators"))
-                                                        else $iterator
-                                                    })) {};
-:)
 
 declare function html:visit-with-ancestors($json-profile as object(), $visitor as function(*)) as item()*
 {
@@ -361,16 +455,19 @@ declare function html:top-function-child($iterators as object()*) as object()*
 };
 
 
-declare function html:location-text($raw-location as xs:string) as xs:string
+declare function html:location-text($raw-location as xs:string?) as xs:string?
 {
-    if (matches($raw-location, "file:///opt/sausalito/\\d.\\d.\\d/opt/Sausalito-App-Server-Mongo-\\d.\\d.\\d/share/zorba/uris.*/modules.*\\.module:.*"))
-    then 
-        replace($raw-location, "file:///opt/sausalito/\\d.\\d.\\d/opt/Sausalito-App-Server-Mongo-\\d.\\d.\\d/share/zorba/uris.*/modules(.*)\\.module(:.*)", "<Z>$1$2")
-    else if (matches($raw-location, "/lib.*\\.module:.*")) 
-         then replace($raw-location, "/lib(.*)\\.module(:.*)", "<L>$1$2")
-         else if (matches($raw-location, "/(public|private).*\\.(xq|jq)(:.*)")) 
-              then replace($raw-location, "/(public|private)(.*\\.)(xq|jq)(:.*)", "<Q>/$1$2$3$4")
-              else "<?>" || $raw-location
+    if ($raw-location)
+    then
+        if (matches($raw-location, "file:///opt/sausalito/\\d.\\d.\\d/opt/Sausalito-App-Server-Mongo-\\d.\\d.\\d/share/zorba/uris.*/modules.*\\.module:.*"))
+        then 
+            replace($raw-location, "file:///opt/sausalito/\\d.\\d.\\d/opt/Sausalito-App-Server-Mongo-\\d.\\d.\\d/share/zorba/uris.*/modules(.*)\\.module(:.*)", "<Z>$1$2")
+        else if (matches($raw-location, "/lib.*\\.module:.*")) 
+             then replace($raw-location, "/lib(.*)\\.module(:.*)", "<L>$1$2")
+             else if (matches($raw-location, "/(public|private).*\\.(xq|jq)(:.*)")) 
+                  then replace($raw-location, "/(public|private)(.*\\.)(xq|jq)(:.*)", "<Q>/$1$2$3$4")
+                  else "<?>" || $raw-location
+    else ()
 };
 
 declare function html:location($raw-location as xs:string) as element()
@@ -397,3 +494,4 @@ declare function html:stack-trace($ancestors as object()*, $location as xs:strin
     }
     </td>
 };
+
