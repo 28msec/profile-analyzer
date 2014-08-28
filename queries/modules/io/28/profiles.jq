@@ -52,7 +52,7 @@ declare %an:sequential function m:filter-in-place($iterator as object) as ()
                 :)
                 if 
                 (
-                    ($child-iterator("kind") = ("TryCatchIterator", "TreatIterator", "FunctionTraceIterator"))
+                    ($child-iterator("kind") = ("TryCatchIterator", "TreatIterator", "FunctionTraceIterator", "IfThenElseIterator"))
                     or
                     (not(exists($child-iterator("prof-wall"))))
                 )

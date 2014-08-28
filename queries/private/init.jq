@@ -1,0 +1,2 @@
+(:create("cache");:)
+truncate("cache");

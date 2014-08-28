@@ -459,9 +459,9 @@ declare function html:location-text($raw-location as xs:string?) as xs:string?
 {
     if ($raw-location)
     then
-        if (matches($raw-location, "file:///opt/sausalito/\\d.\\d.\\d/opt/Sausalito-App-Server-Mongo-\\d.\\d.\\d/share/zorba/uris.*/modules.*\\.module:.*"))
+        if (matches($raw-location, "file:///opt/sausalito/\\d.\\d.\\d/opt/Sausalito-App-Server-Mongo-\\d.\\d.\\d/share/zorba/uris.*/.*\\.module:.*"))
         then 
-            replace($raw-location, "file:///opt/sausalito/\\d.\\d.\\d/opt/Sausalito-App-Server-Mongo-\\d.\\d.\\d/share/zorba/uris.*/modules(.*)\\.module(:.*)", "<Z>$1$2")
+            replace($raw-location, "file:///opt/sausalito/\\d.\\d.\\d/opt/Sausalito-App-Server-Mongo-\\d.\\d.\\d/share/zorba/uris.*/(.*)\\.module(:.*)", "<Z>/$1$2")
         else if (matches($raw-location, "/lib.*\\.module:.*")) 
              then replace($raw-location, "/lib(.*)\\.module(:.*)", "<L>$1$2")
              else if (matches($raw-location, "/(public|private).*\\.(xq|jq)(:.*)")) 
