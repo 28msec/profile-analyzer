@@ -5,6 +5,16 @@ body {
 	color: #333333;
 }
 
+div.info-box {
+	margin:1em 0 1.5em 0; 
+	padding:9px 10px 9px 50px; 
+	border-width:1px 0 1px 0; 
+	border-style:solid;color:#555;
+	text-shadow:none; 
+	border-color:#ccc; 
+	background:#eee	url(info.png) no-repeat 20px 45%;
+}
+
 /* sortable tables */
 table.tablesorter {
 	font-family:arial;
@@ -171,3 +181,4 @@ table.treetable span.iterator {
 table.treetable span.function {
   background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAB3RJTUUH3ggZDSsqXJIjxwAAAAlwSFlzAAAewgAAHsIBbtB1PgAAAARnQU1BAACxjwv8YQUAAAB0SURBVHjaYzBtcSYJMQDx6q8LiUQIDf+JAPg0yGTrQBBRGpLWJUCUAkkgm7AGoLr2i9VEOQnuEkz34LQBaDamUnwa4O6GWwJnYNEAMR7uaQgX7h8sGuBK4Wy4JTg9DTEPrhTZCOwaSIhpXMGPXQNpiY8kBABJHgcGdxSyEgAAAABJRU5ErkJggg==);
 }
+

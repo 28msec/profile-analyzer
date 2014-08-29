@@ -29,7 +29,7 @@ declare %an:sequential function local:get-profile($profile as string, $token as 
                 "headers" :
                 {
                     "X-28msec-Token": $token,
-                    "X-28msec-Iterator-Threshold": $iterator-threshold
+                    "X-28msec-Iterator-Threshold": string($iterator-threshold)
                 }
             }
             let $response := http:send-request($request)

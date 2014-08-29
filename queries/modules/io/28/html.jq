@@ -48,9 +48,7 @@ declare %an:sequential function html:cache-updated-page($query as string, $token
                 This page allows you to analyze a JSON query profile.
             </p>,
             html:form($query, $token),
-            <p>
-                <b>The profiling data for {$query} have been successfully cached.</b>
-            </p>,
+            <div class="info-box"><b>The profiling data for:</b><br/>{$query}<br/><b>has been successfully cached at {current-dateTime()}</b>.</div>,
             html:help()
         }
         </body>
