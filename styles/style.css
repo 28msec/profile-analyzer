@@ -1,3 +1,10 @@
+body {
+	background: #f8f8f8;
+	font-family: monospace;
+	font-size: 14px;
+	color: #333333;
+}
+
 /* sortable tables */
 table.tablesorter {
 	font-family:arial;

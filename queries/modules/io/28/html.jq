@@ -99,20 +99,28 @@ declare function html:help() as element()*
     <p>
         Two common use cases are: 
         <ul>
-            <li>View the profile a live query using /metadata/profile. e.g.:<br/>
-                <pre>
-Query: http://secxbrl-federico.xbrl.io/v1/_queries/public/api/facttable-for-report.jq/metadata/profile?method=POST&amp;report=FundamentalAccountingConcepts&amp;ticker=intc
-Token: UElST0M3UjNSbXAvVkdVdkdMbnJqY2RXRHRFPToyMDUwLTAxLTAxVDAwOjAwOjAw
-                </pre>
-            </li>
-            <li>View a previously collected profile. e.g.:<br/>
-                <pre>
-Query: https://profile-analyzer.s3.amazonaws.com/profiles/profile-1.json
-Token: 
-                </pre>
-            </li>
+            <li><a href="#" onclick="example1();">View the profile a live query using /metadata/profile.</a></li>
+            <li><a href="#" onclick="example2();">View a previously collected profile</a></li>
         </ul>
-    </p>  
+    </p>,
+    <script lang="text/javascript">
+    function example1() 
+    {{
+        document.getElementById("profile-url").value = "http://secxbrl-federico.xbrl.io/v1/_queries/public/api/facttable-for-report.jq/metadata/profile?_method=POST&amp;report=FundamentalAccountingConcepts&amp;ticker=intc";
+        document.getElementById("project-token").value = "UElST0M3UjNSbXAvVkdVdkdMbnJqY2RXRHRFPToyMDUwLTAxLTAxVDAwOjAwOjAw";
+        document.getElementById("only-preprocessing").checked = false;
+        document.getElementById("force-reprofiling").checked = false;
+        document.getElementById("no-full-iterator-tree").checked = true;
+    }}
+    function example2() 
+    {{
+        document.getElementById("profile-url").value = "https://profile-analyzer.s3.amazonaws.com/profiles/profile-1.json";
+        document.getElementById("project-token").value = "";
+        document.getElementById("only-preprocessing").checked = false;
+        document.getElementById("force-reprofiling").checked = false;
+        document.getElementById("no-full-iterator-tree").checked = true;
+    }}
+    </script>
 };
 
 declare function html:form() as element()*
@@ -124,11 +132,11 @@ declare function html:form($profile as xs:string, $token as xs:string) as elemen
 {
     <h3>Submit a new profile to be analyzed</h3>,
     <form id="profileForm" action="/v1/_queries/public/index.jq" method="GET">
-        Profile: <input type="text" name="profile-url" value="{$profile}" size="180"/><br/>
-        Token: <input type="text" name="project-token" value="{$token}" size="180"/><br/>
-        Only pre-processing (useful with long queries): <input type="checkbox" name="only-preprocessing" value="true"/><br/>
-        Force reprofiling (and remove any cached profile for this query): <input type="checkbox" name="force-reprofiling" value="true"/><br/>
-        Do not display full iterator tree (might be useful with long queries): <input type="checkbox" name="no-full-iterator-tree" value="true"/><br/>
+        Profile: <input id="profile-url" type="text" name="profile-url" value="{$profile}" size="180"/><br/>
+        Token: <input id="project-token" type="text" name="project-token" value="{$token}" size="180"/><br/>
+        Only pre-processing (useful with long queries): <input type="checkbox" id="only-preprocessing" name="only-preprocessing" value="true"/><br/>
+        Force reprofiling (and remove any cached profile for this query): <input type="checkbox" id="force-reprofiling" name="force-reprofiling" value="true"/><br/>
+        Do not display full iterator tree (might be useful with long queries): <input type="checkbox" id="no-full-iterator-tree" name="no-full-iterator-tree" value="true"/><br/>
         <input type="hidden" name="_method" value="POST"/>
     </form>,
     <button class="ladda-button" data-color="green" data-style="expand-left" onclick="submitForm()">Submit</button>,
@@ -153,7 +161,6 @@ declare function html:head() as element()
     <script src="{$html:BUCKET}/libs/tablesorter/jquery.tablesorter.js"/>
     <script src="{$html:BUCKET}/libs/ladda/dist/spin.min.js"/>
     <script src="{$html:BUCKET}/libs/ladda/dist/ladda.min.js"/>
-    <link rel="stylesheet" href="{$html:BUCKET}/libs/ladda/css/demo.css"/>
     <link rel="stylesheet" href="{$html:BUCKET}/libs/ladda/dist/ladda.min.css"/>
     <link rel="stylesheet" type="text/css" href="{$html:BUCKET}/styles/style.css"/>
   </head>
