@@ -1,10 +1,11 @@
 jsoniq version "1.0";
 module namespace m = "http://28.io/profiles";
 
-declare %an:sequential function m:clean-profile($json-profile as object) as ()
+declare %an:sequential function m:clean-profile($json-profile as object) as object
 {
     m:filter-in-place($json-profile("iterator-tree"));
     replace value of json $json-profile("iterator-tree")("prof-name") with "<main-query>";
+    $json-profile
 };
 
 (:

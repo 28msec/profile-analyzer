@@ -4,18 +4,18 @@ import module namespace resp = "http://www.28msec.com/modules/http-response";
 
 declare variable $html:BUCKET := "http://profile-analyzer.s3-website-us-east-1.amazonaws.com";
 
-declare %an:sequential function html:page($json-profile as object(), $query as xs:string) as element()
+declare %an:sequential function html:profile-page($json-profile as object(), $no-full-iterator-tree as xs:boolean) as element()
 {
     resp:content-type("text/html");
     <html>
     {
         html:head(),
-        html:body($json-profile, $query)
+        html:profile-body($json-profile, $no-full-iterator-tree)
     }
     </html>
 };
 
-declare %an:sequential function html:form-page() as element()
+declare %an:sequential function html:home-page() as element()
 {
     resp:content-type("text/html");
     <html>
@@ -23,27 +23,126 @@ declare %an:sequential function html:form-page() as element()
         html:head(),
         <body>
         {
-            html:form()
+            <h2>Profile Analyzer (Alpha)</h2>,
+            <p>
+                This page allows you to analyze a JSON query profile.
+            </p>,
+            html:form(),
+            html:help()
         }
         </body>
     }
     </html>
 };
 
-declare function html:form() as element()
+declare %an:sequential function html:cache-updated-page($query as string, $token as string) as element()
 {
-    html:form("http://secxbrl-federico.xbrl.io/v1/_queries/public/api/facttable-for-report.jq/metadata/profile?report=FundamentalAccountingConcepts&ticker=intc",
-              "UElST0M3UjNSbXAvVkdVdkdMbnJqY2RXRHRFPToyMDUwLTAxLTAxVDAwOjAwOjAw")
+    resp:content-type("text/html");
+    <html>
+    {
+        html:head(),
+        <body>
+        {
+            <h2>Profile Analyzer (Alpha)</h2>,
+            <p>
+                This page allows you to analyze a JSON query profile.
+            </p>,
+            html:form($query, $token),
+            <p>
+                <b>The profiling data for {$query} have been successfully cached.</b>
+            </p>,
+            html:help()
+        }
+        </body>
+    }
+    </html>
 };
 
-declare function html:form($query as xs:string, $token as xs:string) as element()
+declare %an:sequential function html:error-page($code as xs:QName, $description as string, $items as item()*) as element()
 {
-    <form action="/v1/_queries/public/index.jq" method="POST">
-        Query: <input type="text" name="query" value="{$query}" size="180"/><br/>
+    resp:content-type("text/html");
+    <html>
+    {
+        html:head(),
+        <body>
+        {
+            <h2>An error occurred</h2>,
+            <p>
+                <b>Code: </b> {$code}<br/>
+                <b>Description: </b> {$description}<br/>
+                {
+                    if (exists($items))
+                    then
+                    {
+                        <b>Data: </b>,<br/>,
+                        <pre>{serialize($items)}</pre>
+                    }
+                    else ()
+                }
+                
+            </p>,
+            <a href="/index.jq">Go Back</a>
+        }
+        </body>
+    }
+    </html>
+};
+
+declare function html:help() as element()*
+{
+    <h3>How to use</h3>,
+    <p>
+        In the profile field, you need to specify a URL at which the JSON profile data is available.<br/>
+        If the same URL has already been displayed preprocessed data will be retrieved from cache and profiling will be almost instantaneous.<br/>
+        otherwise, a GET request will be made to that URL to retrieve the data, passing an header X-28msec-Token with the value of the token field.<br/>
+    </p>,
+    <p>
+        Two common use cases are: 
+        <ul>
+            <li>View the profile a live query using /metadata/profile. e.g.:<br/>
+                <pre>
+Query: http://secxbrl-federico.xbrl.io/v1/_queries/public/api/facttable-for-report.jq/metadata/profile?method=POST&amp;report=FundamentalAccountingConcepts&amp;ticker=intc
+Token: UElST0M3UjNSbXAvVkdVdkdMbnJqY2RXRHRFPToyMDUwLTAxLTAxVDAwOjAwOjAw
+                </pre>
+            </li>
+            <li>View a previously collected profile. e.g.:<br/>
+                <pre>
+Query: https://profile-analyzer.s3.amazonaws.com/profiles/profile-1.json
+Token: 
+                </pre>
+            </li>
+        </ul>
+    </p>  
+};
+
+declare function html:form() as element()*
+{
+    html:form("", "")
+};
+
+declare function html:form($profile as xs:string, $token as xs:string) as element()*
+{
+    <h3>Submit a new profile to be analyzed</h3>,
+    <form id="profileForm" action="/v1/_queries/public/index.jq" method="GET">
+        Profile: <input type="text" name="profile-url" value="{$profile}" size="180"/><br/>
         Token: <input type="text" name="project-token" value="{$token}" size="180"/><br/>
-        Force reprofiling (and remove any cached profile for this query): <input type="checkbox" name="force-profile" value="true"/><br/>
-        <input type="submit" value="Submit"/>
-    </form>
+        Only pre-processing (useful with long queries): <input type="checkbox" name="only-preprocessing" value="true"/><br/>
+        Force reprofiling (and remove any cached profile for this query): <input type="checkbox" name="force-reprofiling" value="true"/><br/>
+        Do not display full iterator tree (might be useful with long queries): <input type="checkbox" name="no-full-iterator-tree" value="true"/><br/>
+        <input type="hidden" name="_method" value="POST"/>
+    </form>,
+    <button class="ladda-button" data-color="green" data-style="expand-left" onclick="submitForm()">Submit</button>,
+    <script lang="text/javascript">
+    function submitForm() 
+    {{
+        var l = Ladda.create( document.querySelector( 'button' ) );
+		l.start();
+		l.stop();
+		l.toggle();
+		l.isLoading();
+		document.getElementById("profileForm").submit();
+    }}
+    </script>
 };
 
 declare function html:head() as element()
@@ -52,21 +151,25 @@ declare function html:head() as element()
     <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"/>
     <script src="{$html:BUCKET}/libs/treetable/jquery.treetable.js"/>
     <script src="{$html:BUCKET}/libs/tablesorter/jquery.tablesorter.js"/>
+    <script src="{$html:BUCKET}/libs/ladda/dist/spin.min.js"/>
+    <script src="{$html:BUCKET}/libs/ladda/dist/ladda.min.js"/>
+    <link rel="stylesheet" href="{$html:BUCKET}/libs/ladda/css/demo.css"/>
+    <link rel="stylesheet" href="{$html:BUCKET}/libs/ladda/dist/ladda.min.css"/>
     <link rel="stylesheet" type="text/css" href="{$html:BUCKET}/styles/style.css"/>
   </head>
 };
 
-declare function html:body($json-profile as object(), $query as xs:string) as element()
+declare function html:profile-body($json-profile as object(), $no-full-iterator-tree as xs:boolean) as element()
 {
     <body>
     {
         <h1>Profiling results</h1>,
-        <b>Query: </b>, {$query}, <br/>,
-        if (exists($json-profile("date")))
-        then <b>Using cached profile from {$json-profile("date")}</b>
-        else (),
+        <b>Query: </b>, {$json-profile("_id")}, <br/>,
+        <b>Using profile generated at {$json-profile("date")}</b>,
         html:profile-tree($json-profile, true()),
-        html:profile-tree($json-profile, false()),
+        if (not($no-full-iterator-tree))
+        then html:profile-tree($json-profile, false())
+        else (),
         html:function-statistics($json-profile),
         html:function-calls-statistics($json-profile),
         html:mongo-statistics($json-profile),

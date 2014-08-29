@@ -1,57 +1,96 @@
 import module namespace http = "http://zorba.io/modules/http-client";
 import module namespace profiles = "http://28.io/profiles";
 import module namespace html = "http://28.io/html";
-import module namespace resp = "http://www.28msec.com/modules/http-response";
 
-declare variable $project-token as xs:string? external := ();
-declare variable $query as xs:string? external := ();
-declare variable $force-profile as xs:boolean external := false;
+declare variable $profile-url as xs:string external := "";
+declare variable $project-token as xs:string external := "";
+declare variable $only-preprocessing as xs:boolean external := false;
+declare variable $force-reprofiling as xs:boolean external := false;
+declare variable $no-full-iterator-tree as xs:boolean external := false;
 
-if (count(($query, $project-token)) ne 2)
-then html:form-page()
-else
+declare %an:sequential function local:get-profile($profile as string, $token as string?) as object()
 {
-  if ($force-profile) 
-  then 
-  {
-    db:delete(collection("cache")[$$."_id" eq $query]);
-  }
-  else ();
-  
-  let $profile := collection("cache")[$$."_id" eq $query]
-  return 
-        if ($profile)
-        then html:page($profile, $query)
+    let $json-profile := collection("cache")[$$."_id" eq $profile]
+    return
+    {
+        if (exists($json-profile))
+        then $json-profile
         else
         {
             let $request :=
+            {|
                 {
-                    "method": "POST",
-                    "href": $query,
-                    "headers" :
+                    "method": "GET",
+                    "href": $profile,
+                    "options": 
                     {
-                        "X-28msec-Token": $project-token
+                        "override-media-type": "application/json"
                     }
-                }
+                },
+                if (not($token = ""))
+                then
+                    {
+                        "headers" :
+                        {
+                            "X-28msec-Token": $token
+                        }
+                    }
+                else ()
+            |}
             let $response := http:send-request($request)
             return
             {
                 if ($response.status eq 200)
                 then
                 {
-                    variable $profile := parse-json($response.body.content);
-                    profiles:clean-profile($profile);
-                    insert("cache", {| {"_id": $query, "date": current-dateTime()},  $profile |});
-                    html:page($profile, $query)
+                    let $json-profile := parse-json($response.body.content)
+                    let $clean-profile := profiles:clean-profile($json-profile)
+                    let $cached-profile := 
+                    {| 
+                        {
+                            "_id": $profile, 
+                            "date": current-dateTime()
+                        },  
+                        $clean-profile
+                    |}
+                    return
+                    {
+                        insert("cache", $cached-profile);
+                        $cached-profile
+                    }
                 }
-                else 
+                else
                 {
-                    resp:content-type("application/json");
+                    let $error :=
                     {
                         "request": $request,
                         "response": $response
                     }
+                    return error(xs:QName("local:GET-PROFILE"), "Cannot retrieve the profile data",  $error)
                 }
             }
         }
+    }
+};
+
+try
+{
+    if ($profile-url = "")
+    then html:home-page()
+    else
+    {
+        if ($force-reprofiling) 
+        then db:delete(collection("cache")[$$."_id" eq $profile-url]);
+        else ();
+  
+        variable $json-profile := local:get-profile($profile-url, $project-token);
+        
+        if ($only-preprocessing)
+        then html:cache-updated-page($profile-url, $project-token)
+        else html:profile-page($json-profile, $no-full-iterator-tree)
+    }
+}
+catch *
+{
+    html:error-page($err:code, $err:description, $err:value)
 }
