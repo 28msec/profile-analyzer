@@ -109,16 +109,18 @@ declare function html:help() as element()*
         document.getElementById("profile-url").value = "http://secxbrl-federico.xbrl.io/v1/_queries/public/api/facttable-for-report.jq/metadata/profile?_method=POST&amp;report=FundamentalAccountingConcepts&amp;ticker=intc";
         document.getElementById("project-token").value = "UElST0M3UjNSbXAvVkdVdkdMbnJqY2RXRHRFPToyMDUwLTAxLTAxVDAwOjAwOjAw";
         document.getElementById("only-preprocessing").checked = false;
-        document.getElementById("force-reprofiling").checked = false;
+        document.getElementById("force-preprocessing").checked = false;
         document.getElementById("no-full-iterator-tree").checked = true;
+        document.getElementById("iterator-threshold").value = 0;
     }}
     function example2() 
     {{
         document.getElementById("profile-url").value = "https://profile-analyzer.s3.amazonaws.com/profiles/profile-1.json";
         document.getElementById("project-token").value = "";
         document.getElementById("only-preprocessing").checked = false;
-        document.getElementById("force-reprofiling").checked = false;
+        document.getElementById("force-preprocessing").checked = false;
         document.getElementById("no-full-iterator-tree").checked = true;
+        document.getElementById("iterator-threshold").value = 0;
     }}
     </script>
 };
@@ -132,12 +134,24 @@ declare function html:form($profile as xs:string, $token as xs:string) as elemen
 {
     <h3>Submit a new profile to be analyzed</h3>,
     <form id="profileForm" action="/v1/_queries/public/index.jq" method="GET">
-        Profile: <input id="profile-url" type="text" name="profile-url" value="{$profile}" size="180"/><br/>
+    <p>
+        Profile URL: <input id="profile-url" type="text" name="profile-url" value="{$profile}" size="180"/><br/>
+    </p>
+    <p>
+        <b>Profiling options:</b> (The profile URL must be a /metadata/plan endpoint) <br/>
         Token: <input id="project-token" type="text" name="project-token" value="{$token}" size="180"/><br/>
-        Only pre-processing (useful with long queries): <input type="checkbox" id="only-preprocessing" name="only-preprocessing" value="true"/><br/>
-        Force reprofiling (and remove any cached profile for this query): <input type="checkbox" id="force-reprofiling" name="force-reprofiling" value="true"/><br/>
-        Do not display full iterator tree (might be useful with long queries): <input type="checkbox" id="no-full-iterator-tree" name="no-full-iterator-tree" value="true"/><br/>
-        <input type="hidden" name="_method" value="POST"/>
+        Do not include in the profile iterators taking less than (useful with long queries, but will make the iterator exclusive time less precise): <input type="number" id="iterator-threshold" name="iterator-threshold" min="0" max="5" value="0"/> ms<br/>
+    </p>
+    <p>
+        <b>Caching options:</b><br/>
+        Only cache pre-processed data (useful with long queries): <input type="checkbox" id="only-preprocessing" name="only-preprocessing" value="true"/><br/>
+        Force pre-processing (removing any cached pre-processed data for this URL): <input type="checkbox" id="force-preprocessing" name="force-preprocessing" value="true"/>
+    </p>
+    <p> 
+        <b>Display options:</b><br/>
+        Do not display full iterator tree (might be useful with long queries): <input type="checkbox" id="no-full-iterator-tree" name="no-full-iterator-tree" value="true"/>
+    </p>
+    <input type="hidden" name="_method" value="POST"/>
     </form>,
     <button class="ladda-button" data-color="green" data-style="expand-left" onclick="submitForm()">Submit</button>,
     <script lang="text/javascript">

@@ -5,8 +5,9 @@ import module namespace html = "http://28.io/html";
 declare variable $profile-url as xs:string external := "";
 declare variable $project-token as xs:string external := "";
 declare variable $only-preprocessing as xs:boolean external := false;
-declare variable $force-reprofiling as xs:boolean external := false;
+declare variable $force-preprocessing as xs:boolean external := false;
 declare variable $no-full-iterator-tree as xs:boolean external := false;
+declare variable $iterator-threshold as xs:integer external := 0;
 
 declare %an:sequential function local:get-profile($profile as string, $token as string?) as object()
 {
@@ -18,25 +19,19 @@ declare %an:sequential function local:get-profile($profile as string, $token as 
         else
         {
             let $request :=
-            {|
+            {
+                "method": "GET",
+                "href": $profile,
+                "options": 
                 {
-                    "method": "GET",
-                    "href": $profile,
-                    "options": 
-                    {
-                        "override-media-type": "application/json"
-                    }
+                    "override-media-type": "application/json"
                 },
-                if (not($token = ""))
-                then
-                    {
-                        "headers" :
-                        {
-                            "X-28msec-Token": $token
-                        }
-                    }
-                else ()
-            |}
+                "headers" :
+                {
+                    "X-28msec-Token": $token,
+                    "X-28msec-Iterator-Threshold": $iterator-threshold
+                }
+            }
             let $response := http:send-request($request)
             return
             {
@@ -79,7 +74,7 @@ try
     then html:home-page()
     else
     {
-        if ($force-reprofiling) 
+        if ($force-preprocessing) 
         then db:delete(collection("cache")[$$."_id" eq $profile-url]);
         else ();
   
