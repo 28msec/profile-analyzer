@@ -39,7 +39,7 @@ declare %an:sequential function local:get-profile($profile as string, $token as 
                 then
                 {
                     let $json-profile := parse-json($response.body.content)
-                    let $clean-profile := profiles:clean-profile($json-profile)
+                    let $clean-profile := profiles:preprocess-profile($json-profile, true())
                     let $cached-profile := 
                     {| 
                         {
@@ -87,5 +87,5 @@ try
 }
 catch *
 {
-    html:error-page($err:code, $err:description, $err:value)
+    html:error-page($err:code, $err:description, $err:value, $zerr:stack-trace)
 }

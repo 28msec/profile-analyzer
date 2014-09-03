@@ -56,7 +56,7 @@ declare %an:sequential function html:cache-updated-page($query as string, $token
     </html>
 };
 
-declare %an:sequential function html:error-page($code as xs:QName, $description as string, $items as item()*) as element()
+declare %an:sequential function html:error-page($code as xs:QName, $description as string, $items as item()*, $stack-trace as item()*) as element()
 {
     resp:content-type("text/html");
     <html>
@@ -75,6 +75,13 @@ declare %an:sequential function html:error-page($code as xs:QName, $description 
                         <b>Data: </b>,<br/>,
                         <pre>{serialize($items)}</pre>
                     }
+                    else (),
+                    if (exists($stack-trace))
+                    then
+                    {
+                        <b>Stack Trace: </b>,<br/>,
+                        <pre>{serialize($stack-trace)}</pre>
+                    }
                     else ()
                 }
                 
@@ -86,7 +93,7 @@ declare %an:sequential function html:error-page($code as xs:QName, $description 
     </html>
 };
 
-declare function html:help() as element()*
+declare %private function html:help() as element()*
 {
     <h3>How to use</h3>,
     <p>
@@ -123,12 +130,12 @@ declare function html:help() as element()*
     </script>
 };
 
-declare function html:form() as element()*
+declare %private function html:form() as element()*
 {
     html:form("", "")
 };
 
-declare function html:form($profile as xs:string, $token as xs:string) as element()*
+declare %private function html:form($profile as xs:string, $token as xs:string) as element()*
 {
     <h3>Submit a new profile to be analyzed</h3>,
     <form id="profileForm" action="/v1/_queries/public/index.jq" method="GET">
@@ -165,7 +172,7 @@ declare function html:form($profile as xs:string, $token as xs:string) as elemen
     </script>
 };
 
-declare function html:head() as element()
+declare %private function html:head() as element()
 {
   <head>
     <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"/>
@@ -178,13 +185,14 @@ declare function html:head() as element()
   </head>
 };
 
-declare function html:profile-body($json-profile as object(), $no-full-iterator-tree as xs:boolean) as element()
+declare %private function html:profile-body($json-profile as object(), $no-full-iterator-tree as xs:boolean) as element()
 {
     <body>
     {
         <h1>Profiling results</h1>,
         <b>Query: </b>, {$json-profile("_id")}, <br/>,
-        <b>Using profile generated at {$json-profile("date")}</b>,
+        <b>Using profile generated at {$json-profile("date")}</b>, <br/>,
+        <b><a download="profile.json" href="/v1/_queries/public/download.jq?_method=POST&amp;profile-url={encode-for-uri($json-profile("_id"))}">Download profile</a></b>,
         html:profile-tree($json-profile, true()),
         if (not($no-full-iterator-tree))
         then html:profile-tree($json-profile, false())
@@ -197,7 +205,7 @@ declare function html:profile-body($json-profile as object(), $no-full-iterator-
     </body>   
 };
 
-declare function html:profile-tree($json-profile as object(), $only-functions as xs:boolean) as element()*
+declare %private function html:profile-tree($json-profile as object(), $only-functions as xs:boolean) as element()*
 {
     let $id := "profile-tree" || (if ($only-functions) then "-functions" else ())
     return
@@ -209,6 +217,8 @@ declare function html:profile-tree($json-profile as object(), $only-functions as
                     <th>Name</th>
                     <th>CPU (ms)</th>
                     <th>Wall (ms)</th>
+                    <th>CPU (ms) (no desc)</th>
+                    <th>Wall (ms) (no desc)</th>
                     <th>Calls</th>
                     <th>Nexts</th>
                     <th>C. Hits</th>
@@ -238,6 +248,8 @@ declare function html:profile-tree($json-profile as object(), $only-functions as
                             </td>
                             <td>{$iterator("prof-cpu")}</td>
                             <td>{$iterator("prof-wall")}</td>
+                            <td>{$iterator("prof-exclusive-cpu")}</td>
+                            <td>{$iterator("prof-exclusive-wall")}</td>
                             <td>{$iterator("prof-calls")}</td>
                             <td>{$iterator("prof-next-calls")}</td>
                             <td>{if ($iterator("cached")) then ($iterator("prof-cache-hits"), "??")[1] else "N/A"}</td>
@@ -261,7 +273,7 @@ declare function html:profile-tree($json-profile as object(), $only-functions as
     )
 };
 
-declare function html:function-statistics($json-profile as object()) as element()*
+declare %private function html:function-statistics($json-profile as object()) as element()*
 {
     <h3>Most expensive functions</h3>,
     <table cellspacing="1" id="functions" class="tablesorter">             
@@ -270,6 +282,8 @@ declare function html:function-statistics($json-profile as object()) as element(
                 <th>Name</th> 
                 <th>CPU (ms)</th>
                 <th>Wall (ms)</th>
+                <th>CPU (ms) (no desc)</th>
+                <th>Wall (ms) (no desc)</th>
                 <th>Calls</th>
                 <th>Nexts</th>
                 <th>C. Hits</th>
@@ -286,6 +300,8 @@ declare function html:function-statistics($json-profile as object()) as element(
                     <td>{$function("prof-name")[1]}</td>
                     <td>{sum($function("prof-cpu"))}</td>
                     <td>{sum($function("prof-wall"))}</td>
+                    <td>{sum($function("prof-exclusive-cpu"))}</td>
+                    <td>{sum($function("prof-exclusive-wall"))}</td>
                     <td>{sum($function("prof-calls"))}</td>
                     <td>{sum($function("prof-next-calls"))}</td>
                     <td>{if ($function("cached")[1]) then (sum($function("prof-cache-hits")), "??")[1] else "N/A"}</td>
@@ -307,7 +323,7 @@ declare function html:function-statistics($json-profile as object()) as element(
     </script>
 };
 
-declare function html:function-calls-statistics($json-profile as object()) as element()*
+declare %private function html:function-calls-statistics($json-profile as object()) as element()*
 {
     <h3>Most expensive functions calls</h3>,
     <table cellspacing="1" id="function-calls" class="tablesorter">             
@@ -316,6 +332,8 @@ declare function html:function-calls-statistics($json-profile as object()) as el
                 <th>Name</th> 
                 <th>CPU (ms)</th>
                 <th>Wall (ms)</th>
+                <th>CPU (ms) (no desc)</th>
+                <th>Wall (ms) (no desc)</th>
                 <th>Calls</th>
                 <th>Nexts</th>
                 <th>C. Hits</th>
@@ -334,6 +352,8 @@ declare function html:function-calls-statistics($json-profile as object()) as el
                             <td>{$iterator("prof-name")}</td>
                             <td>{$iterator("prof-cpu")}</td>
                             <td>{$iterator("prof-wall")}</td>
+                            <td>{$iterator("prof-exclusive-cpu")}</td>
+                            <td>{$iterator("prof-exclusive-wall")}</td>
                             <td>{$iterator("prof-calls")}</td>
                             <td>{$iterator("prof-next-calls")}</td>
                             <td>{if ($iterator("cached")) then ($iterator("prof-cache-hits"), "??")[1] else "N/A"}</td>
@@ -358,7 +378,7 @@ declare function html:function-calls-statistics($json-profile as object()) as el
     </script>
 };
 
-declare function html:mongo-statistics($json-profile as object()) as element()*
+declare %private function html:mongo-statistics($json-profile as object()) as element()*
 {
     <h3>MongoDB operations</h3>,
     <table cellspacing="1" id="mongodb" class="tablesorter">             
@@ -410,6 +430,26 @@ declare function html:mongo-statistics($json-profile as object()) as element()*
                                             }
                                         }
                                     </table>
+                                else if (members($iterator("prof-commands")))
+                                then
+                                    <table>
+                                        <tr>
+                                            <th>Command</th>
+                                            <th>CPU (ms)</th>
+                                            <th>Wall (ms)</th>
+                                        </tr>
+                                        {
+                                            for $command in members($iterator("prof-commands"))
+                                            return
+                                            {
+                                                <tr>
+                                                    <td>{serialize($command("prof-command"))}</td>
+                                                    <td>{$command("prof-cpu")}</td>
+                                                    <td>{$command("prof-wall")}</td>
+                                                </tr>
+                                            }
+                                        }
+                                    </table>
                                 else ()
                             }
                             </td>
@@ -432,7 +472,7 @@ declare function html:mongo-statistics($json-profile as object()) as element()*
     </script>
 };
 
-declare function html:eval-statistics($json-profile as object()) as element()*
+declare %private function html:eval-statistics($json-profile as object()) as element()*
 {
     <h3>Eval operations</h3>,
     <table cellspacing="1" id="eval" class="tablesorter">             
@@ -514,7 +554,7 @@ declare function html:eval-statistics($json-profile as object()) as element()*
 };
 
 
-declare function html:serialize-incell($objects as object()*, $field-name as string) as item()*
+declare %private function html:serialize-incell($objects as object()*, $field-name as string) as item()*
 {
   let $count := count($objects($field-name))
   for $field-value at $i in $objects($field-name)
@@ -527,27 +567,27 @@ declare function html:serialize-incell($objects as object()*, $field-name as str
       )
 };
 
-declare function html:visit-with-ancestors($json-profile as object(), $visitor as function(*)) as item()*
+declare %private function html:visit-with-ancestors($json-profile as object(), $visitor as function(*)) as item()*
 {
     html:do-visit-with-ancestors($json-profile("iterator-tree"), (), $visitor)
 };
 
 
-declare function html:do-visit-with-ancestors($iterator as object(), $ancestors as object()*, $visitor as function(*)) as item()*
+declare %private function html:do-visit-with-ancestors($iterator as object(), $ancestors as object()*, $visitor as function(*)) as item()*
 {
     $visitor($iterator, $ancestors),
     let $ancestors := ($ancestors, $iterator)
     return members($iterator("iterators")) ! html:do-visit-with-ancestors($$, $ancestors, $visitor)
 };
 
-declare function html:visit-with-ancestor-ids($json-profile as object(), $only-functions as xs:boolean, $visitor as function(*)) as item()*
+declare %private function html:visit-with-ancestor-ids($json-profile as object(), $only-functions as xs:boolean, $visitor as function(*)) as item()*
 {
     if ($only-functions)
     then html:do-visit-functions-with-ancestor-ids($json-profile("iterator-tree"), "1", $visitor)
     else html:do-visit-with-ancestor-ids($json-profile("iterator-tree"), "1", $visitor)
 };
 
-declare function html:do-visit-with-ancestor-ids($iterator as object(), $ancestors as xs:string*, $visitor as function(*)) as item()*
+declare %private function html:do-visit-with-ancestor-ids($iterator as object(), $ancestors as xs:string*, $visitor as function(*)) as item()*
 {
     $visitor($iterator, $ancestors),
     for $child at $i in members($iterator("iterators"))
@@ -556,7 +596,7 @@ declare function html:do-visit-with-ancestor-ids($iterator as object(), $ancesto
 };
 
 
-declare function html:do-visit-functions-with-ancestor-ids($iterator as object(), $ancestors as xs:string*, $visitor as function(*)) as item()*
+declare %private function html:do-visit-functions-with-ancestor-ids($iterator as object(), $ancestors as xs:string*, $visitor as function(*)) as item()*
 {
     $visitor($iterator, $ancestors),
     
@@ -565,7 +605,7 @@ declare function html:do-visit-functions-with-ancestor-ids($iterator as object()
     return html:do-visit-functions-with-ancestor-ids($child, $ancestors, $visitor)
 };
 
-declare function html:top-function-child($iterators as object()*) as object()*
+declare %private function html:top-function-child($iterators as object()*) as object()*
 {
     for $iterator in $iterators
     return
@@ -577,7 +617,7 @@ declare function html:top-function-child($iterators as object()*) as object()*
 };
 
 
-declare function html:location-text($raw-location as xs:string?) as xs:string?
+declare %private function html:location-text($raw-location as xs:string?) as xs:string?
 {
     if ($raw-location)
     then
@@ -592,7 +632,7 @@ declare function html:location-text($raw-location as xs:string?) as xs:string?
     else ()
 };
 
-declare function html:location($raw-location as xs:string) as element()
+declare %private function html:location($raw-location as xs:string) as element()
 {
     if (matches($raw-location, "file:///opt/sausalito/\\d.\\d.\\d/opt/Sausalito-App-Server-Mongo-\\d.\\d.\\d/share/zorba/uris.*/modules.*\\.module:.*"))
     then 
@@ -604,7 +644,7 @@ declare function html:location($raw-location as xs:string) as element()
               else <td nowrap="true">{"<?>" || $raw-location}</td>
 };
 
-declare function html:stack-trace($ancestors as object()*, $location as xs:string?) as element()
+declare %private function html:stack-trace($ancestors as object()*, $location as xs:string?) as element()
 {
     <td nowrap="true">
     {

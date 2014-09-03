@@ -1,9 +1,9 @@
 jsoniq version "1.0";
 module namespace m = "http://28.io/profiles";
 
-declare %an:sequential function m:clean-profile($json-profile as object) as object
+declare %an:sequential function m:preprocess-profile($json-profile as object, $compute-exclusive-times as boolean) as object
 {
-    m:filter-in-place($json-profile("iterator-tree"));
+    m:do-preprocess-profile($json-profile("iterator-tree"), $compute-exclusive-times);
     replace value of json $json-profile("iterator-tree")("prof-name") with "<main-query>";
     $json-profile
 };
@@ -12,8 +12,20 @@ declare %an:sequential function m:clean-profile($json-profile as object) as obje
   the choice to drop an iterator is made on its ancestors
   if the function is called on an iterator, it will be present in the final plan
 :)
-declare %an:sequential function m:filter-in-place($iterator as object) as ()
+declare %private %an:sequential function m:do-preprocess-profile($iterator as object, $compute-exclusive-times as boolean) as ()
 { 
+    if ($compute-exclusive-times and exists($iterator("prof-wall")))
+    then
+    {
+        variable $timed-children :=  m:timed-children($iterator);
+        insert json 
+        {  
+            "prof-exclusive-wall": $iterator("prof-wall") - sum($timed-children("prof-wall")),
+            "prof-exclusive-cpu": $iterator("prof-cpu") - sum($timed-children("prof-cpu"))
+        } into $iterator;
+    }
+    else ();
+    
     if (empty(members($iterator("iterators"))))
     then ()
     else
@@ -76,6 +88,17 @@ declare %an:sequential function m:filter-in-place($iterator as object) as ()
         }
         
         for $child-iterator in members($iterator("iterators"))
-        return m:filter-in-place($child-iterator);
+        return m:do-preprocess-profile($child-iterator, $compute-exclusive-times);
+    }
+};
+
+declare %an:sequential function m:timed-children($iterator as object) as object*
+{
+    for $child-iterator in members($iterator("iterators"))
+    return 
+    {
+        if (exists($child-iterator("prof-wall")))
+        then $child-iterator
+        else m:timed-children($child-iterator)
     }
 };
