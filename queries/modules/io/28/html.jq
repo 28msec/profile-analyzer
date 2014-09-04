@@ -1,8 +1,18 @@
 jsoniq version "1.0";
 module namespace html = "http://28.io/html";
 import module namespace resp = "http://www.28msec.com/modules/http-response";
+import schema namespace output = "http://www.w3.org/2010/xslt-xquery-serialization";
 
 declare variable $html:BUCKET := "http://profile-analyzer.s3-website-us-east-1.amazonaws.com";
+declare variable $html:SERIALIZATION-PARAMETERS:=
+    <output:serialization-parameters>
+        <output:encoding value="UTF-8"/>
+        <output:indent value="yes"/>
+        <output:method value="json-xml-hybrid"/>
+        <output:omit-xml-declaration value="yes"/>
+        <output:version value="1.0"/>
+    </output:serialization-parameters>;
+declare variable $html:ITERATOR-THRESHOLD := 15;
 
 declare %an:sequential function html:profile-page($json-profile as object(), $no-full-iterator-tree as xs:boolean) as element()
 {
@@ -28,7 +38,8 @@ declare %an:sequential function html:home-page() as element()
                 This page allows you to analyze a JSON query profile.
             </p>,
             html:form(),
-            html:help()
+            html:help(),
+            html:cache()
         }
         </body>
     }
@@ -56,7 +67,7 @@ declare %an:sequential function html:cache-updated-page($query as string, $token
     </html>
 };
 
-declare %an:sequential function html:error-page($code as xs:QName, $description as string, $items as item()*, $stack-trace as item()*) as element()
+declare %an:sequential function html:error-page($code as xs:QName, $description as string, $items as item()*, $stack-trace as item()*, $location as string) as element()
 {
     resp:content-type("text/html");
     <html>
@@ -68,6 +79,7 @@ declare %an:sequential function html:error-page($code as xs:QName, $description 
             <p>
                 <b>Code: </b> {$code}<br/>
                 <b>Description: </b> {$description}<br/>
+                <b>Location: </b> {$location}<br/>
                 {
                     if (exists($items))
                     then
@@ -80,7 +92,7 @@ declare %an:sequential function html:error-page($code as xs:QName, $description 
                     then
                     {
                         <b>Stack Trace: </b>,<br/>,
-                        <pre>{serialize($stack-trace)}</pre>
+                        <pre>{serialize($stack-trace, $html:SERIALIZATION-PARAMETERS)}</pre>
                     }
                     else ()
                 }
@@ -104,24 +116,15 @@ declare %private function html:help() as element()*
     <p>
         Two common use cases are: 
         <ul>
-            <li><a href="#" onclick="example1();">View the profile a live query using /metadata/profile.</a></li>
-            <li><a href="#" onclick="example2();">View a previously collected profile</a></li>
+            <li><a href="#" onclick="loadExample('http://secxbrl-federico.xbrl.io/v1/_queries/public/api/facttable-for-report.jq/metadata/profile?_method=POST&amp;report=FundamentalAccountingConcepts&amp;ticker=intc','UElST0M3UjNSbXAvVkdVdkdMbnJqY2RXRHRFPToyMDUwLTAxLTAxVDAwOjAwOjAw');">View the profile a live query using /metadata/profile.</a></li>
+            <li><a href="#" onclick="loadExample('https://profile-analyzer.s3.amazonaws.com/profiles/profile-1.json', '');">View a previously collected profile</a></li>
         </ul>
     </p>,
     <script lang="text/javascript">
-    function example1() 
+    function loadExample(url, token) 
     {{
-        document.getElementById("profile-url").value = "http://secxbrl-federico.xbrl.io/v1/_queries/public/api/facttable-for-report.jq/metadata/profile?_method=POST&amp;report=FundamentalAccountingConcepts&amp;ticker=intc";
-        document.getElementById("project-token").value = "UElST0M3UjNSbXAvVkdVdkdMbnJqY2RXRHRFPToyMDUwLTAxLTAxVDAwOjAwOjAw";
-        document.getElementById("only-preprocessing").checked = false;
-        document.getElementById("force-preprocessing").checked = false;
-        document.getElementById("no-full-iterator-tree").checked = true;
-        document.getElementById("iterator-threshold").value = 0;
-    }}
-    function example2() 
-    {{
-        document.getElementById("profile-url").value = "https://profile-analyzer.s3.amazonaws.com/profiles/profile-1.json";
-        document.getElementById("project-token").value = "";
+        document.getElementById("profile-url").value = url;
+        document.getElementById("project-token").value = token;
         document.getElementById("only-preprocessing").checked = false;
         document.getElementById("force-preprocessing").checked = false;
         document.getElementById("no-full-iterator-tree").checked = true;
@@ -240,10 +243,16 @@ declare %private function html:profile-tree($json-profile as object(), $only-fun
                         }
                             <td>
                                 <span class="{
-                                    if ($iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator"))
-                                    then "function"
-                                    else "iterator"}">
-                                        {$iterator("prof-name")}
+                                    switch ($iterator("kind"))
+                                    case "UDFunctionBody" return "udfunction"
+                                    case "ExtFunctionBody" return "extfunction"
+                                    default return "iterator"
+                                    }">
+                                        {
+                                            if ($iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator"))
+                                            then "Call to " || $iterator("prof-name") || "(...)"
+                                            else $iterator("prof-name")
+                                        }
                                 </span>
                             </td>
                             <td>{$iterator("prof-cpu")}</td>
@@ -254,7 +263,7 @@ declare %private function html:profile-tree($json-profile as object(), $only-fun
                             <td>{$iterator("prof-next-calls")}</td>
                             <td>{if ($iterator("cached")) then ($iterator("prof-cache-hits"), "??")[1] else "N/A"}</td>
                             <td>{if ($iterator("cached")) then ($iterator("prof-cache-misses"), "??")[1] else "N/A"}</td>
-                            <td>{html:location-text($iterator("location"))}</td>
+                            <td>{if ($iterator("location")) then html:location-text($iterator("location")) else "N/A"}</td>
                         </tr>
                     })
             }
@@ -288,16 +297,28 @@ declare %private function html:function-statistics($json-profile as object()) as
                 <th>Nexts</th>
                 <th>C. Hits</th>
                 <th>C. Misses</th>
+                <th>Location</th>
             </tr> 
         </thead>
         <tbody>
         {
             for $function in descendant-objects($json-profile)
-            where $function("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator")
+            where $function("kind") = ("UDFunctionBody", "ExtFunctionBody")
             group by $function("prof-name")
             return
                 <tr>
-                    <td>{$function("prof-name")[1]}</td>
+                    <td>
+                        <span class="{
+                                    switch ($function("kind")[1])
+                                    case "UDFunctionBody" return "udfunction"
+                                    case "ExtFunctionBody" return "extfunction"
+                                    default return "iterator"
+                                    }">
+                                    {
+                                            $function("prof-name")[1]
+                                    }
+                        </span>
+                    </td>
                     <td>{sum($function("prof-cpu"))}</td>
                     <td>{sum($function("prof-wall"))}</td>
                     <td>{sum($function("prof-exclusive-cpu"))}</td>
@@ -306,6 +327,7 @@ declare %private function html:function-statistics($json-profile as object()) as
                     <td>{sum($function("prof-next-calls"))}</td>
                     <td>{if ($function("cached")[1]) then (sum($function("prof-cache-hits")), "??")[1] else "N/A"}</td>
                     <td>{if ($function("cached")[1]) then (sum($function("prof-cache-misses")), "??")[1] else "N/A"}</td>
+                    <td>{if ($function("kind")[1] eq "UDFunctionBody") then $function("location")[1] else "N/A"}</td>
                 </tr>
         }
         </tbody>
@@ -591,6 +613,8 @@ declare %private function html:do-visit-with-ancestor-ids($iterator as object(),
 {
     $visitor($iterator, $ancestors),
     for $child at $i in members($iterator("iterators"))
+    where $child("prof-wall") gt $html:ITERATOR-THRESHOLD
+    order by $child("prof-wall") descending
     let $ancestors := ($ancestors, string($i))
     return html:do-visit-with-ancestor-ids($child, $ancestors, $visitor)
 };
@@ -601,6 +625,8 @@ declare %private function html:do-visit-functions-with-ancestor-ids($iterator as
     $visitor($iterator, $ancestors),
     
     for $child at $i in html:top-function-child(members($iterator("iterators")))
+    where $child("prof-wall") gt $html:ITERATOR-THRESHOLD
+    order by $child("prof-wall") descending
     let $ancestors := ($ancestors, string($i))
     return html:do-visit-functions-with-ancestor-ids($child, $ancestors, $visitor)
 };
@@ -610,7 +636,7 @@ declare %private function html:top-function-child($iterators as object()*) as ob
     for $iterator in $iterators
     return
     {
-        if ($iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator"))
+        if ($iterator("kind") = ("UDFunctionBody", "ExtFunctionBody"))
         then $iterator
         else html:top-function-child(members($iterator("iterators")))
     }
@@ -628,7 +654,9 @@ declare %private function html:location-text($raw-location as xs:string?) as xs:
              then replace($raw-location, "/lib(.*)\\.module(:.*)", "<L>$1$2")
              else if (matches($raw-location, "/(public|private).*\\.(xq|jq)(:.*)")) 
                   then replace($raw-location, "/(public|private)(.*\\.)(xq|jq)(:.*)", "<Q>/$1$2$3$4")
-                  else "<?>" || $raw-location
+                  else if (starts-with($raw-location, "<zorba>"))
+                       then replace($raw-location, "<zorba>/(.*)\\.module(:.*)", "<Z>/$1$2") 
+                       else "<?>" || $raw-location
     else ()
 };
 
@@ -657,3 +685,21 @@ declare %private function html:stack-trace($ancestors as object()*, $location as
     </td>
 };
 
+declare %private function html:cache() as element()*
+{
+    <h3>Cache contents</h3>,
+    if (count(collection("cache")) eq 0)
+    then <b>Cache is empty.</b>
+    else
+        <ul>
+        {
+            for $cached-item in collection("cache")
+            let $profile-url := $cached-item."_id"
+            let $profile-date := $cached-item."date"
+            return
+            (
+                <li><a href="#" onclick="loadExample('{$profile-url}', '');">{$profile-url}</a>, cached at {$profile-date}, <a href="/v1/_queries/public/delete.jq?_method=POST&amp;profile-url={encode-for-uri($profile-url)}">Delete</a></li>
+            )
+        }
+        </ul>
+};

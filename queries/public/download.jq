@@ -13,7 +13,7 @@ return
     }
     else
     {
-        resp:status(404);
+        resp:status-code(404);
         ()
     }
 }
