@@ -12,15 +12,14 @@ declare variable $html:SERIALIZATION-PARAMETERS:=
         <output:omit-xml-declaration value="yes"/>
         <output:version value="1.0"/>
     </output:serialization-parameters>;
-declare variable $html:ITERATOR-THRESHOLD := 15;
 
-declare %an:sequential function html:profile-page($json-profile as object(), $no-full-iterator-tree as xs:boolean) as element()
+declare %an:sequential function html:profile-page($json-profile as object(), $display-full-iterator-tree as xs:boolean, $display-iterator-threshold as integer) as element()
 {
     resp:content-type("text/html");
     <html>
     {
         html:head(),
-        html:profile-body($json-profile, $no-full-iterator-tree)
+        html:profile-body($json-profile, $display-full-iterator-tree, $display-iterator-threshold)
     }
     </html>
 };
@@ -33,7 +32,7 @@ declare %an:sequential function html:home-page() as element()
         html:head(),
         <body>
         {
-            <h2>Profile Analyzer (Alpha)</h2>,
+            <h2>Profile Analyzer</h2>,
             <p>
                 This page allows you to analyze a JSON query profile.
             </p>,
@@ -54,7 +53,7 @@ declare %an:sequential function html:cache-updated-page($query as string, $token
         html:head(),
         <body>
         {
-            <h2>Profile Analyzer (Alpha)</h2>,
+            <h2>Profile Analyzer</h2>,
             <p>
                 This page allows you to analyze a JSON query profile.
             </p>,
@@ -125,10 +124,15 @@ declare %private function html:help() as element()*
     {{
         document.getElementById("profile-url").value = url;
         document.getElementById("project-token").value = token;
+        
         document.getElementById("only-preprocessing").checked = false;
         document.getElementById("force-preprocessing").checked = false;
-        document.getElementById("no-full-iterator-tree").checked = true;
+        document.getElementById("all-exclusive-times").checked = false;
+        
+        
         document.getElementById("iterator-threshold").value = 0;
+        document.getElementById("display-iterator-threshold").value = 25;
+        document.getElementById("display-full-iterator-tree").checked = true;
     }}
     </script>
 };
@@ -148,16 +152,18 @@ declare %private function html:form($profile as xs:string, $token as xs:string) 
     <p>
         <b>Profiling options:</b> (The profile URL must be a /metadata/plan endpoint) <br/>
         Token: <input id="project-token" type="text" name="project-token" value="{$token}" size="180"/><br/>
-        Do not include in the profile iterators taking less than (useful with long queries, but will make the iterator exclusive time less precise): <input type="number" id="iterator-threshold" name="iterator-threshold" min="0" max="5" value="0"/> ms<br/>
+        Profile iterators taking more than: <input type="number" id="iterator-threshold" name="iterator-threshold" min="0" max="30" value="0"/> ms (useful with long queries, but will make exclusive times less precise)
     </p>
     <p>
-        <b>Caching options:</b><br/>
-        Only cache pre-processed data (useful with long queries): <input type="checkbox" id="only-preprocessing" name="only-preprocessing" value="true"/><br/>
-        Force pre-processing (removing any cached pre-processed data for this URL): <input type="checkbox" id="force-preprocessing" name="force-preprocessing" value="true"/>
+        <b>Processing and caching options:</b><br/>
+        Only pre-processing: <input type="checkbox" id="only-preprocessing" name="only-preprocessing" value="true"/> (do not display profile after it has been cached)<br/>
+        Force pre-processing: <input type="checkbox" id="force-preprocessing" name="force-preprocessing" value="true"/> (overwrite any cached pre-processed data for this URL)<br/>
+        Compute exclusive times for all iterators: <input type="checkbox" id="all-exclusive-times" name="all-exclusive-times" value="true"/> (increases the processing time by 30%)
     </p>
     <p> 
         <b>Display options:</b><br/>
-        Do not display full iterator tree (might be useful with long queries): <input type="checkbox" id="no-full-iterator-tree" name="no-full-iterator-tree" value="true"/>
+        Display iterators taking more than: <input type="number" id="display-iterator-threshold" name="display-iterator-threshold" min="0" max="50" value="25"/> ms<br/>
+        Display full iterator tree: <input type="checkbox" id="display-full-iterator-tree" name="display-full-iterator-tree" value="true"/>
     </p>
     <input type="hidden" name="_method" value="POST"/>
     </form>,
@@ -188,7 +194,7 @@ declare %private function html:head() as element()
   </head>
 };
 
-declare %private function html:profile-body($json-profile as object(), $no-full-iterator-tree as xs:boolean) as element()
+declare %private function html:profile-body($json-profile as object(), $display-full-iterator-tree as xs:boolean, $display-iterator-threshold as integer) as element()
 {
     <body>
     {
@@ -196,19 +202,21 @@ declare %private function html:profile-body($json-profile as object(), $no-full-
         <b>Query: </b>, {$json-profile("_id")}, <br/>,
         <b>Using profile generated at {$json-profile("date")}</b>, <br/>,
         <b><a download="profile.json" href="/v1/_queries/public/download.jq?_method=POST&amp;profile-url={encode-for-uri($json-profile("_id"))}">Download profile</a></b>,
-        html:profile-tree($json-profile, true()),
-        if (not($no-full-iterator-tree))
-        then html:profile-tree($json-profile, false())
+        <b><a href="/index.jq">Home Page</a></b>,
+        html:profile-tree($json-profile, true(), $display-iterator-threshold),
+        if ($display-full-iterator-tree)
+        then html:profile-tree($json-profile, false(), $display-iterator-threshold)
         else (),
-        html:function-statistics($json-profile),
-        html:function-calls-statistics($json-profile),
+        html:function-statistics($json-profile, $display-iterator-threshold),
+        html:function-calls-statistics($json-profile, $display-iterator-threshold),
         html:mongo-statistics($json-profile),
-        html:eval-statistics($json-profile)
+        html:eval-statistics($json-profile),
+        html:http-statistics($json-profile)
     }   
     </body>   
 };
 
-declare %private function html:profile-tree($json-profile as object(), $only-functions as xs:boolean) as element()*
+declare %private function html:profile-tree($json-profile as object(), $only-functions as xs:boolean, $display-iterator-threshold as integer) as element()*
 {
     let $id := "profile-tree" || (if ($only-functions) then "-functions" else ())
     return
@@ -231,13 +239,13 @@ declare %private function html:profile-tree($json-profile as object(), $only-fun
             </thead>
             <tbody>
             {
-                html:visit-with-ancestor-ids($json-profile, $only-functions,
+                html:visit-with-ancestor-ids($json-profile, $only-functions, $display-iterator-threshold,
                     function ($iterator as object, $ancestors as xs:string*) as element()? 
                     { 
                         <tr>
                         {
                             attribute data-tt-id {string-join($ancestors,"-")},
-                            if (count($ancestors) gt 1)
+                            if (count($ancestors) ge 1)
                             then attribute data-tt-parent-id {string-join($ancestors[position() < last()], "-")}
                             else ()
                         }
@@ -282,7 +290,7 @@ declare %private function html:profile-tree($json-profile as object(), $only-fun
     )
 };
 
-declare %private function html:function-statistics($json-profile as object()) as element()*
+declare %private function html:function-statistics($json-profile as object, $display-iterator-threshold as integer) as element()*
 {
     <h3>Most expensive functions</h3>,
     <table cellspacing="1" id="functions" class="tablesorter">             
@@ -306,6 +314,8 @@ declare %private function html:function-statistics($json-profile as object()) as
             where $function("kind") = ("UDFunctionBody", "ExtFunctionBody")
             group by $function("prof-name")
             return
+                if (sum($function("prof-wall")) ge $display-iterator-threshold)
+                then
                 <tr>
                     <td>
                         <span class="{
@@ -329,6 +339,7 @@ declare %private function html:function-statistics($json-profile as object()) as
                     <td>{if ($function("cached")[1]) then (sum($function("prof-cache-misses")), "??")[1] else "N/A"}</td>
                     <td>{if ($function("kind")[1] eq "UDFunctionBody") then $function("location")[1] else "N/A"}</td>
                 </tr>
+                else ()
         }
         </tbody>
     </table>,
@@ -345,7 +356,7 @@ declare %private function html:function-statistics($json-profile as object()) as
     </script>
 };
 
-declare %private function html:function-calls-statistics($json-profile as object()) as element()*
+declare %private function html:function-calls-statistics($json-profile as object, $display-iterator-threshold as integer) as element()*
 {
     <h3>Most expensive functions calls</h3>,
     <table cellspacing="1" id="function-calls" class="tablesorter">             
@@ -365,7 +376,7 @@ declare %private function html:function-calls-statistics($json-profile as object
         </thead>
         <tbody>
         {
-            html:visit-with-ancestors($json-profile,
+            html:visit-with-ancestors($json-profile, $display-iterator-threshold,
                 function ($iterator as object, $ancestors as object()*) as element()? 
                 { 
                     if ($iterator("kind") = ("UDFunctionCallIterator", "ExtFunctionCallIterator"))
@@ -417,7 +428,7 @@ declare %private function html:mongo-statistics($json-profile as object()) as el
         </thead>
         <tbody>
         {
-            html:visit-with-ancestors($json-profile, 
+            html:visit-with-ancestors($json-profile, 0,
                 function ($iterator as object, $ancestors as object()*) as element()? 
                 { 
                     if (($iterator("kind") eq "ExtFunctionCallIterator") and
@@ -513,7 +524,7 @@ declare %private function html:eval-statistics($json-profile as object()) as ele
         </thead>
         <tbody>
         {
-            html:visit-with-ancestors($json-profile, 
+            html:visit-with-ancestors($json-profile, 0,
                 function ($iterator as object, $ancestors as object()*) as element()? 
                 { 
                     if ($iterator("kind") eq "EvalIterator")
@@ -575,6 +586,86 @@ declare %private function html:eval-statistics($json-profile as object()) as ele
     </script>
 };
 
+declare %private function html:http-statistics($json-profile as object()) as element()*
+{
+    <h3>HTTP operations</h3>,
+    <table cellspacing="1" id="http" class="tablesorter">             
+        <thead>
+            <tr> 
+                <th>Name</th> 
+                <th>CPU (ms)</th>
+                <th>Wall (ms)</th>
+                <th>C. CPU (ms)</th>
+                <th>C. Wall (ms)</th>
+                <th>Calls</th>
+                <th>Nexts</th>
+                <th>Stack Trace</th>
+                <th>Requests</th>
+            </tr> 
+        </thead>
+        <tbody>
+        {
+            html:visit-with-ancestors($json-profile, 0,
+                function ($iterator as object, $ancestors as object()*) as element()? 
+                { 
+                    if ($iterator("kind") eq "ExtFunctionCallIterator" and
+                        starts-with($iterator("prof-name"), "{http://zorba.io/modules/http-client}"))
+                    then
+                        <tr>
+                            <td nowrap="true">{$iterator("prof-name")}</td>
+                            <td>{$iterator("prof-cpu")}</td>
+                            <td>{$iterator("prof-wall")}</td>
+                            <td>{$iterator("prof-compilation-cpu")}</td>
+                            <td>{$iterator("prof-compilation-wall")}</td>
+                            <td>{$iterator("prof-calls")}</td>
+                            <td>{$iterator("prof-next-calls")}</td>
+                            {html:stack-trace($ancestors, ())}
+                            <td>
+                            {
+                                if (exists(members($iterator("prof-requests"))))
+                                then
+                                    <table>
+                                        <tr>
+                                            <th>Request</th>
+                                            <th>Body size</th>
+                                            <th>CPU (ms)</th>
+                                            <th>Wall (ms)</th>
+                                        </tr>
+                                        {
+                                            for $request in members($iterator("prof-requests"))
+                                            return
+                                            {
+                                                <tr>
+                                                    <td>{$request("prof-request")}</td>
+                                                    <td>{$request("prof-request-body-size")}</td>
+                                                    <td>{$request("prof-cpu")}</td>
+                                                    <td>{$request("prof-wall")}</td>
+                                                </tr>
+                                            }
+                                        }
+                                    </table>
+                                else ()
+                            }
+                            </td>
+                        </tr>
+                    else ()
+                })
+        }
+        </tbody>
+    </table>,
+    <script lang="text/javascript">
+        $(document).ready(function() 
+        {{ 
+            $("#mongodb").tablesorter({{ sortList: [[2,1]] }}); 
+        }});
+        $("#mongodb tbody").on("mousedown", "tr", function() 
+        {{
+            $(".selected").not(this).removeClass("selected");
+            $(this).toggleClass("selected");
+        }});
+    </script>
+};
+
 
 declare %private function html:serialize-incell($objects as object()*, $field-name as string) as item()*
 {
@@ -589,46 +680,47 @@ declare %private function html:serialize-incell($objects as object()*, $field-na
       )
 };
 
-declare %private function html:visit-with-ancestors($json-profile as object(), $visitor as function(*)) as item()*
+declare %private function html:visit-with-ancestors($json-profile as object(), $display-iterator-threshold as integer, $visitor as function(*)) as item()*
 {
-    html:do-visit-with-ancestors($json-profile("iterator-tree"), (), $visitor)
+    html:do-visit-with-ancestors($json-profile("iterator-tree"), (), $display-iterator-threshold, $visitor)
 };
 
 
-declare %private function html:do-visit-with-ancestors($iterator as object(), $ancestors as object()*, $visitor as function(*)) as item()*
+declare %private function html:do-visit-with-ancestors($iterator as object(), $ancestors as object()*, $display-iterator-threshold as integer, $visitor as function(*)) as item()*
 {
     $visitor($iterator, $ancestors),
     let $ancestors := ($ancestors, $iterator)
-    return members($iterator("iterators")) ! html:do-visit-with-ancestors($$, $ancestors, $visitor)
+    for $iterator in members($iterator("iterators"))
+    where $iterator("prof-wall") ge $display-iterator-threshold
+    return html:do-visit-with-ancestors($iterator, $ancestors, $display-iterator-threshold, $visitor)
 };
 
-declare %private function html:visit-with-ancestor-ids($json-profile as object(), $only-functions as xs:boolean, $visitor as function(*)) as item()*
+declare %private function html:visit-with-ancestor-ids($json-profile as object(), $only-functions as xs:boolean, $display-iterator-threshold as integer, $visitor as function(*)) as item()*
 {
     if ($only-functions)
-    then html:do-visit-functions-with-ancestor-ids($json-profile("iterator-tree"), "1", $visitor)
-    else html:do-visit-with-ancestor-ids($json-profile("iterator-tree"), "1", $visitor)
+    then html:do-visit-functions-with-ancestor-ids($json-profile("iterator-tree"), "1", $display-iterator-threshold, $visitor)
+    else html:do-visit-with-ancestor-ids($json-profile("iterator-tree"), "1", $display-iterator-threshold, $visitor)
 };
 
-declare %private function html:do-visit-with-ancestor-ids($iterator as object(), $ancestors as xs:string*, $visitor as function(*)) as item()*
+declare %private function html:do-visit-with-ancestor-ids($iterator as object(), $ancestors as xs:string*, $display-iterator-threshold as integer, $visitor as function(*)) as item()*
 {
     $visitor($iterator, $ancestors),
     for $child at $i in members($iterator("iterators"))
-    where $child("prof-wall") gt $html:ITERATOR-THRESHOLD
+    where $child("prof-wall") ge $display-iterator-threshold
     order by $child("prof-wall") descending
     let $ancestors := ($ancestors, string($i))
-    return html:do-visit-with-ancestor-ids($child, $ancestors, $visitor)
+    return html:do-visit-with-ancestor-ids($child, $ancestors, $display-iterator-threshold, $visitor)
 };
 
 
-declare %private function html:do-visit-functions-with-ancestor-ids($iterator as object(), $ancestors as xs:string*, $visitor as function(*)) as item()*
+declare %private function html:do-visit-functions-with-ancestor-ids($iterator as object(), $ancestors as xs:string*, $display-iterator-threshold as integer, $visitor as function(*)) as item()*
 {
     $visitor($iterator, $ancestors),
-    
     for $child at $i in html:top-function-child(members($iterator("iterators")))
-    where $child("prof-wall") gt $html:ITERATOR-THRESHOLD
+    where $child("prof-wall") ge $display-iterator-threshold
     order by $child("prof-wall") descending
     let $ancestors := ($ancestors, string($i))
-    return html:do-visit-functions-with-ancestor-ids($child, $ancestors, $visitor)
+    return html:do-visit-functions-with-ancestor-ids($child, $ancestors, $display-iterator-threshold, $visitor)
 };
 
 declare %private function html:top-function-child($iterators as object()*) as object()*

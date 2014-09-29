@@ -4,66 +4,61 @@ import module namespace html = "http://28.io/html";
 
 declare variable $profile-url as xs:string external := "";
 declare variable $project-token as xs:string external := "";
+
 declare variable $only-preprocessing as xs:boolean external := false;
 declare variable $force-preprocessing as xs:boolean external := false;
-declare variable $no-full-iterator-tree as xs:boolean external := false;
+
 declare variable $iterator-threshold as xs:integer external := 0;
+declare variable $all-exclusive-times as xs:boolean external := false;
+
+declare variable $display-full-iterator-tree as xs:boolean external := true;
+declare variable $display-iterator-threshold as xs:integer external := 25;
+
 
 declare %an:sequential function local:get-profile($profile as string, $token as string?) as object()
 {
-    let $json-profile := collection("cache")[$$."_id" eq $profile]
-    return
+    variable $json-profile := collection("cache")[$$."_id" eq $profile];
+    if (exists($json-profile))
+    then $json-profile
+    else
     {
-        if (exists($json-profile))
-        then $json-profile
+        variable $request :=
+        {
+            "method": "GET",
+            "href": $profile,
+            "options": 
+            {
+                "override-media-type": "application/json"
+            },
+            "headers" :
+            {
+                "X-28msec-Token": $token,
+                "X-28msec-Iterator-Threshold": string($iterator-threshold)
+            }
+        };
+        variable $response := http:send-request($request);
+        
+        if ($response.status eq 200)
+        then
+        {
+            variable $json-profile := parse-json($response.body.content);
+            variable $clean-profile := profiles:preprocess-profile($json-profile, $all-exclusive-times);
+            insert json
+            {
+                "_id": $profile, 
+                "date": current-dateTime()
+            }
+            into $clean-profile;
+            insert("cache", $clean-profile);
+            $clean-profile
+        }
         else
         {
-            let $request :=
-            {
-                "method": "GET",
-                "href": $profile,
-                "options": 
+            error(xs:QName("local:GET-PROFILE"), "Cannot retrieve the profile data",
                 {
-                    "override-media-type": "application/json"
-                },
-                "headers" :
-                {
-                    "X-28msec-Token": $token,
-                    "X-28msec-Iterator-Threshold": string($iterator-threshold)
-                }
-            }
-            let $response := http:send-request($request)
-            return
-            {
-                if ($response.status eq 200)
-                then
-                {
-                    let $json-profile := parse-json($response.body.content)
-                    let $clean-profile := profiles:preprocess-profile($json-profile)
-                    let $cached-profile := 
-                    {| 
-                        {
-                            "_id": $profile, 
-                            "date": current-dateTime()
-                        },  
-                        $clean-profile
-                    |}
-                    return
-                    {
-                        insert("cache", $cached-profile);
-                        $cached-profile
-                    }
-                }
-                else
-                {
-                    let $error :=
-                    {
-                        "request": $request,
-                        "response": $response
-                    }
-                    return error(xs:QName("local:GET-PROFILE"), "Cannot retrieve the profile data",  $error)
-                }
-            }
+                    "request": $request,
+                    "response": $response
+                })
         }
     }
 };
@@ -82,7 +77,7 @@ try
         
         if ($only-preprocessing)
         then html:cache-updated-page($profile-url, $project-token)
-        else html:profile-page($json-profile, $no-full-iterator-tree)
+        else html:profile-page($json-profile, $display-full-iterator-tree, $display-iterator-threshold)
     }
 }
 catch *

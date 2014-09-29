@@ -3,10 +3,10 @@ module namespace m = "http://28.io/profiles";
 
 declare variable $m:ITERATOR-THRESHOLD := 10;
 
-declare %an:sequential function m:preprocess-profile($json-profile as object) as object
+declare %an:sequential function m:preprocess-profile($json-profile as object, $all-exclusive-times as boolean) as object
 {
     m:do-preprocess-functions($json-profile("iterator-tree"));
-    m:do-preprocess-profile($json-profile("iterator-tree"));
+    m:do-preprocess-profile($json-profile("iterator-tree"), $all-exclusive-times);
     replace value of json $json-profile("iterator-tree")("prof-name") with "<main-query>";
     $json-profile
 };
@@ -15,9 +15,9 @@ declare %an:sequential function m:preprocess-profile($json-profile as object) as
   the choice to drop an iterator is made on its ancestors
   if the function is called on an iterator, it will be present in the final plan
 :)
-declare %private %an:sequential function m:do-preprocess-profile($iterator as object) as ()
+declare %private %an:sequential function m:do-preprocess-profile($iterator as object, $all-exclusive-times as boolean) as ()
 { 
-    m:do-compute-exclusive-times($iterator);
+    m:do-compute-exclusive-times($iterator, $all-exclusive-times);
     
     if (empty(members($iterator("iterators"))))
     then ()
@@ -83,11 +83,11 @@ declare %private %an:sequential function m:do-preprocess-profile($iterator as ob
         }
         
         for $child-iterator in members($iterator("iterators"))
-        return m:do-preprocess-profile($child-iterator);
+        return m:do-preprocess-profile($child-iterator, $all-exclusive-times);
     }
 };
 
-declare %private %an:sequential function m:do-compute-exclusive-times($iterator as object) as ()
+declare %private %an:sequential function m:do-compute-exclusive-times($iterator as object, $all-exclusive-times as boolean) as ()
 {
     if (empty($iterator("prof-wall")))
     then ();
@@ -107,17 +107,20 @@ declare %private %an:sequential function m:do-compute-exclusive-times($iterator 
             }
             case "ExtFunctionArgs" return ();
             case "ExtFunctionBody" return ();
-            default return ();
-            (:
+            default return
             {
-                variable $timed-children :=  m:get-timed-children($iterator);
-                insert json 
-                {  
-                    "prof-exclusive-wall": $iterator("prof-wall") - sum($timed-children("prof-wall")),
-                    "prof-exclusive-cpu": $iterator("prof-cpu") - sum($timed-children("prof-cpu"))
-                } into $iterator;
+                if ($all-exclusive-times)
+                then
+                {
+                    variable $timed-children :=  m:get-timed-children($iterator);
+                    insert json 
+                    {
+                        "prof-exclusive-wall": max(($iterator("prof-wall") - sum($timed-children("prof-wall")),0)),
+                        "prof-exclusive-cpu": max(($iterator("prof-cpu") - sum($timed-children("prof-cpu")),0))
+                    } into $iterator;
+                }
+                else ();
             }
-            :)
     }
 };
 
