@@ -150,7 +150,7 @@ declare %private function html:form($profile as xs:string, $token as xs:string) 
         Profile URL: <input id="profile-url" type="text" name="profile-url" value="{$profile}" size="180"/><br/>
     </p>
     <p>
-        <b>Profiling options:</b> (The profile URL must be a /metadata/plan endpoint) <br/>
+        <b>Profiling options:</b> (The profile URL must be a /metadata/profile endpoint) <br/>
         Token: <input id="project-token" type="text" name="project-token" value="{$token}" size="180"/><br/>
         Profile iterators taking more than: <input type="number" id="iterator-threshold" name="iterator-threshold" min="0" max="30" value="0"/> ms (useful with long queries, but will make exclusive times less precise)
     </p>
@@ -335,8 +335,30 @@ declare %private function html:function-statistics($json-profile as object, $dis
                     <td>{sum($function("prof-exclusive-wall"))}</td>
                     <td>{sum($function("prof-calls"))}</td>
                     <td>{sum($function("prof-next-calls"))}</td>
-                    <td>{if ($function("cached")[1]) then (sum($function("prof-cache-hits")), "??")[1] else "N/A"}</td>
-                    <td>{if ($function("cached")[1]) then (sum($function("prof-cache-misses")), "??")[1] else "N/A"}</td>
+                    <td>
+                        {
+                          let $total-cache-hits := 
+                            for $hits in $function("prof-cache-hits")
+                            where $hits ne null
+                            return $hits
+                          return
+                            if ($function("cached")[1]) 
+                            then (sum($total-cache-hits), "??")[1] 
+                            else ""
+                        }
+                    </td>
+                    <td>
+                        {
+                          let $total-cache-misses := 
+                            for $misses in $function("prof-cache-misses")
+                            where $misses ne null
+                            return $misses
+                          return
+                            if ($function("cached")[1]) 
+                            then (sum($total-cache-misses), "??")[1] 
+                            else ""
+                        }
+                    </td>
                     <td>{if ($function("kind")[1] eq "UDFunctionBody") then $function("location")[1] else "N/A"}</td>
                 </tr>
                 else ()
@@ -788,6 +810,7 @@ declare %private function html:cache() as element()*
             for $cached-item in collection("cache")
             let $profile-url := $cached-item."_id"
             let $profile-date := $cached-item."date"
+            order by $profile-date descending
             return
             (
                 <li><a href="#" onclick="loadExample('{$profile-url}', '');">{$profile-url}</a>, cached at {$profile-date}, <a href="/v1/_queries/public/delete.jq?_method=POST&amp;profile-url={encode-for-uri($profile-url)}">Delete</a></li>

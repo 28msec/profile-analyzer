@@ -42,7 +42,7 @@ declare %an:sequential function local:get-profile($profile as string, $token as 
         then
         {
             variable $json-profile := parse-json($response.body.content);
-            variable $clean-profile := profiles:preprocess-profile($json-profile, $all-exclusive-times);
+            variable $clean-profile := profiles:preprocess-profile($json-profile, $all-exclusive-times, $iterator-threshold);
             insert json
             {
                 "_id": $profile, 
