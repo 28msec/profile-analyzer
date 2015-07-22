@@ -3,11 +3,11 @@ import module namespace profiles = "http://28.io/profiles";
 import module namespace html = "http://28.io/html";
 import module namespace request = "http://www.28msec.com/modules/http-request";
 
-declare variable $profile-url as xs:string := "";
-declare variable $project-token as xs:string := "";
+declare variable $profile-url as xs:string external := "";
+declare variable $project-token as xs:string external := "";
 declare variable $force-preprocessing as xs:boolean := true;
-declare variable $iterator-threshold as xs:integer := 0;
-
+declare variable $iterator-threshold as xs:integer external := 0;
+declare variable $all-exclusive-times as xs:boolean external := false;
 
 declare %an:sequential function local:preprocess($profile as string, $token as string?) as empty-sequence()
 {
@@ -37,7 +37,7 @@ declare %an:sequential function local:preprocess($profile as string, $token as s
             trace("Parsing profile", "status");
             variable $json-profile := parse-json($response.body.content);
             trace("Preprocessing profile", "status");
-            variable $clean-profile := profiles:preprocess-profile($json-profile);
+            variable $clean-profile := profiles:preprocess-profile($json-profile, $all-exclusive-times, $iterator-threshold);
             trace("Adding profile metadata", "status");
             insert json
             {
